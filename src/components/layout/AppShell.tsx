@@ -153,20 +153,24 @@ export default function AppShell({
       >
         <header className="sticky top-0 z-20 flex min-h-20 flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-gray-200 bg-white px-3 py-2 sm:px-6 xl:py-0 dark:border-gray-800 dark:bg-gray-900">
           <div className="flex items-center gap-3">
-            <IconButton
-              label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-              onClick={() => setCollapsed(!collapsed)}
-              className="hidden rounded-lg xl:flex"
-            >
-              <Menu />
-            </IconButton>
-            <IconButton
-              label="Open navigation"
-              onClick={() => setMobileOpen(true)}
-              className="rounded-lg xl:hidden"
-            >
-              <Menu />
-            </IconButton>
+            <div className="hidden xl:block">
+              <IconButton
+                label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                onClick={() => setCollapsed(!collapsed)}
+                className="rounded-lg"
+              >
+                <Menu />
+              </IconButton>
+            </div>
+            <div className="xl:hidden">
+              <IconButton
+                label="Open navigation"
+                onClick={() => setMobileOpen(true)}
+                className="rounded-lg"
+              >
+                <Menu />
+              </IconButton>
+            </div>
             <Link href="/" aria-label="QueueSmart home" className="xl:hidden">
               <Brand compact />
             </Link>

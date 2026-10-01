@@ -19,6 +19,12 @@ type FieldProps = {
   error?: string;
   success?: boolean;
 };
+function describedBy(id: string, help: string | undefined, external?: string) {
+  return (
+    [external, help ? `${id}-help` : undefined].filter(Boolean).join(" ") ||
+    undefined
+  );
+}
 export function Label({
   className = "",
   ...props
@@ -76,6 +82,7 @@ export function Input({
   error,
   success,
   className,
+  "aria-describedby": externalDescription,
   ...props
 }: InputProps) {
   const generatedId = useId();
@@ -91,7 +98,7 @@ export function Input({
       <input
         id={id}
         aria-invalid={!!error || undefined}
-        aria-describedby={error || hint ? `${id}-help` : undefined}
+        aria-describedby={describedBy(id, error || hint, externalDescription)}
         className={controlStyle(error, success, `h-11 ${className || ""}`)}
         {...props}
       />
@@ -105,6 +112,7 @@ export function PasswordInput({
   error,
   success,
   className,
+  "aria-describedby": externalDescription,
   ...props
 }: Omit<InputProps, "type">) {
   const generatedId = useId();
@@ -123,7 +131,7 @@ export function PasswordInput({
           id={id}
           type={visible ? "text" : "password"}
           aria-invalid={!!error || undefined}
-          aria-describedby={error || hint ? `${id}-help` : undefined}
+          aria-describedby={describedBy(id, error || hint, externalDescription)}
           className={controlStyle(
             error,
             success,
@@ -156,6 +164,7 @@ export function TextArea({
   error,
   success,
   className,
+  "aria-describedby": externalDescription,
   ...props
 }: TextareaHTMLAttributes<HTMLTextAreaElement> & FieldProps) {
   const generatedId = useId();
@@ -172,7 +181,7 @@ export function TextArea({
         id={id}
         rows={4}
         aria-invalid={!!error || undefined}
-        aria-describedby={error || hint ? `${id}-help` : undefined}
+        aria-describedby={describedBy(id, error || hint, externalDescription)}
         className={controlStyle(error, success, className)}
         {...props}
       />
@@ -187,6 +196,7 @@ export function Select({
   success,
   className,
   children,
+  "aria-describedby": externalDescription,
   ...props
 }: SelectHTMLAttributes<HTMLSelectElement> & FieldProps) {
   const generatedId = useId();
@@ -203,7 +213,7 @@ export function Select({
         <select
           id={id}
           aria-invalid={!!error || undefined}
-          aria-describedby={error || hint ? `${id}-help` : undefined}
+          aria-describedby={describedBy(id, error || hint, externalDescription)}
           className={controlStyle(
             error,
             success,

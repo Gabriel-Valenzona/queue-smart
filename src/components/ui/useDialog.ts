@@ -16,7 +16,7 @@ export default function useDialog(open: boolean) {
       if (event.key !== "Tab" || !dialog) return;
       const controls = Array.from(
         dialog.querySelectorAll<HTMLElement>(
-          "a[href], button, input, select, textarea, [tabindex]",
+          "a[href], button, input, select, textarea, summary, [contenteditable], [tabindex]",
         ),
       ).filter(
         (element) =>

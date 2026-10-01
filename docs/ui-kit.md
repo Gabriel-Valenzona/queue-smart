@@ -64,7 +64,7 @@ export default function HistoryPage() {
 
 ## Forms and actions
 
-Native props are forwarded: `name`, `required`, `maxLength`, `min`, `max`, `step`, `autoComplete`, `disabled`, and accessibility attributes. `Input`, `PasswordInput`, `Select`, and `TextArea` accept `label`, `hint`, string `error`, and boolean `success`. They connect labels/hints to generated IDs; an explicit `id` is also supported.
+Native props are forwarded: `name`, `required`, `maxLength`, `min`, `max`, `step`, `autoComplete`, `disabled`, and accessibility attributes. `Input`, `PasswordInput`, `Select`, and `TextArea` accept `label`, `hint`, string `error`, and boolean `success`. They connect labels/hints to generated IDs; an explicit `id` is also supported. A supplied `aria-describedby` is combined with the field's hint/error ID so both descriptions remain available.
 
 ```tsx
 import { Input, Select } from "@/components/forms/Fields";
@@ -94,7 +94,7 @@ For custom controls, `FormField` takes `id`, `label`, `hint`, `error`, `required
 - Badges accept `color`, `variant="light" | "solid"`, `size="sm" | "md"`, and optional start/end icons.
 - Alerts take `variant="success" | "info" | "warning" | "error"`, `title`, and `message`. Only supply `showLink`, `linkHref`, and `linkText` together when an actual destination exists.
 - `Modal` takes `open`, `onClose`, `title`, and `children`. Use its controlled state to close after an action. A shared native-dialog hook explicitly contains Tab and Shift+Tab focus; closing restores focus. Escape and backdrop dismiss it. Do not nest modal dialogs.
-- `Dropdown` takes an accessible `label`, a non-interactive `trigger` element, and children. Put ordinary links/buttons inside; it is a disclosure, not an ARIA menu. Tab enters its contents; Escape closes and returns focus.
+- `Dropdown` takes an accessible `label`, a non-interactive `trigger` element, and children. Put ordinary links/buttons inside; it is a disclosure, not an ARIA menu. Tab enters its contents; Escape closes and returns focus. Use `align="start"` for triggers near the left edge; the default `align="end"` suits header actions near the right edge. Check the opened panel on mobile, as well as the closed trigger.
 - Use a table caption (visually hidden if appropriate) and `TableHead` for column labels. Tables scroll horizontally on small screens. Keep sorting, queue reordering, service lookup, and data ownership in the page/controller.
 - `NotificationMenu` displays supplied `NotificationItem[]`; it does not trigger or mark notifications. `AccountMenu` displays supplied identity and links; it does not grant a role.
 

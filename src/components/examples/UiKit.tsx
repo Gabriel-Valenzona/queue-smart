@@ -358,6 +358,7 @@ export default function UiKit() {
             </Button>
             <Dropdown
               label="Example actions"
+              align="start"
               trigger={
                 <span className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-3 text-sm dark:border-gray-700">
                   More actions
