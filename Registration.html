@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <style>
+    body {
+       background-color: powderblue;
+    }
+    .title{
+      font-family: 'Courier New';
+      text-align: center;
+      font-weight: bold;
+      font-size: 50px;
+    }
+    .Login{
+      font-family: 'Courier New';
+      text-align: center;
+      font-weight: bold;
+      font-size: 25px;
+    }
+    form {
+      border-radius: 5px;
+      background-color: #f2f2f2;
+      padding: 20px;
+    }
+
+    label {display: block;}
+
+    input[type=email], input[type=password], select {
+      width: 100%;
+      padding: 12px;
+      margin: 8px 0;
+      display: inline-block;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+
+    input[type=submit] {
+      width: 25%;
+      background-color: #4CAF50;
+      color: white;
+      padding: 8px;
+      margin: 8px 0;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 30px;
+    }
+
+    input[type=submit]:hover {
+      background-color: #45a049;
+    }
+
+    .error-message {
+      color: red;
+      font-family: Arial, sans-serif;
+      font-size: 14px;
+      margin-bottom: 10px;
+      display: none;
+    }
+
+  a:link, a:visited {
+    font-family: Arial;
+    background-color: blue;
+    color: white;
+    padding: 14px 25px;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+  }
+
+  a:hover, a:active {
+    background-color: red;
+  }
+
+  .container {
+  position: relative;
+  }
+
+
+  .Registration {
+  position: absolute;
+  top: 85%;
+  left: 500px;
+  width: 25%;
+  text-align: center;
+  font-size: 20px;
+  }
+  </style>
+
+  <title>
+    QueueSmart Login Page
+  </title>
+  
+  <link rel="stylesheet" href="index.css" />
+</head>
+
+<body>
+
+<p class="title">Welcome Back to QueueSmart</p>
+
+<p class="Login">&#8595 Enter Your Login Information Below &#8595</p>
+
+<form id="loginForm" action="index.php" method="post" onsubmit="return validateForm()">
+  <div id="error-summary" class="error-message"></div>
+
+  <label for="email">Email Address</label>
+  <input type="email" id="email" name="email" placeholder="Enter your email address" required>
+
+  <label for="password">Password</label>
+  <input type="password" id="password" name="password" placeholder="Enter your password" minlength="8" required>
+  
+  <input type="submit" value="Submit">
+</form>
+
+<a class="container"></a>
+<a class = "Registration" href="index2.php" target="_blank">No Account? Register Here!</a>
+
+<script>
+function validateForm() {
+  const email = document.getElementById("email").value;
+  const password = document.getElementById("password").value;
+  const errorElement = document.getElementById("error-summary");
+  
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  
+  if (!emailRegex.test(email)) {
+    errorElement.textContent = "Please enter a valid email address.";
+    errorElement.style.display = "block";
+    return false;
+  }
+  
+  if (password.length < 8) {
+    errorElement.textContent = "Password must be at least 8 characters long.";
+    errorElement.style.display = "block";
+    return false;
+  }
+
+  errorElement.style.display = "none";
+  return true;
+}
+</script>
+
+</body>
+</html>
