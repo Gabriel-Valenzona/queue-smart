@@ -1,36 +1,24 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# QueueSmart
+
+COSC 4353 Assignment 2 frontend, using Next.js, TypeScript, and Tailwind CSS 4.
+
+The shared UI kit adapts [TailAdmin](https://github.com/TailAdmin/free-nextjs-admin-dashboard) with UH colors and optional university branding. See the [component guide](docs/ui-kit.md) and [third-party notices](THIRD_PARTY_NOTICES.md).
+
+Available routes: `/` (landing), `/login` and `/register` (validation-only previews), and `/ui-kit` (interactive component gallery). User/admin feature pages remain for the team to implement. No backend authentication or persistence is included.
 
 ## Getting Started
 
-First, run the development server:
+Install the locked dependencies, then run the development server:
 
 ```bash
+npm ci
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+The landing page is `src/app/page.tsx`. Shared components are in `src/components`; use the component guide before adding page-specific styles.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+This project uses `next/font` to load Outfit, matching TailAdmin's typography. A clean build needs access to Google Fonts. Run `npm run lint`, `npx tsc --noEmit`, and `npm run build` to check changes.
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Set `showUniversityLogo` in `src/config/branding.ts` to control UH logos throughout the site. This affects the favicon too. The UI gallery's branding toggle changes previews only.
