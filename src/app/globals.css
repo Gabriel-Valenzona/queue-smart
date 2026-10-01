@@ -1,4 +1,4 @@
-/* Adapted from TailAdmin (MIT); see THIRD_PARTY_NOTICES.md. */
+/* Adapted from TailAdmin (MIT); see LICENSE. */
 @import "tailwindcss";
 
 @custom-variant dark (&:is(.dark *));

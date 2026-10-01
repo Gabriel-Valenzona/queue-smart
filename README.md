@@ -2,7 +2,7 @@
 
 COSC 4353 Assignment 2 frontend, using Next.js, TypeScript, and Tailwind CSS 4.
 
-The shared UI kit adapts [TailAdmin](https://github.com/TailAdmin/free-nextjs-admin-dashboard) with UH colors and optional university branding. See the [component guide](docs/ui-kit.md) and [third-party notices](THIRD_PARTY_NOTICES.md).
+The shared UI kit adapts [TailAdmin](https://github.com/TailAdmin/free-nextjs-admin-dashboard) with UH colors and optional university branding. See the [component guide](docs/ui-kit.md) and [license and attribution](LICENSE).
 
 Available routes: `/` (landing), `/login` and `/register` (validation-only previews), and `/ui-kit` (interactive component gallery). User/admin feature pages remain for the team to implement. No backend authentication or persistence is included.
 

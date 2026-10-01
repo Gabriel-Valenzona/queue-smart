@@ -116,4 +116,4 @@ Run `npm run lint`, `npx tsc --noEmit`, and `npm run build`. If the local sandbo
 
 Check light/dark modes, mobile navigation, keyboard focus and Escape, required/invalid/valid inputs, controlled resets, table overflow, branding on/off, and all links. A2 feature pages and mock workflows still need to be implemented and tested by their owners.
 
-See `THIRD_PARTY_NOTICES.md` for TailAdmin's source revision, component inventory, full MIT license, and UH asset provenance. QueueSmart's own license is preserved.
+See `LICENSE` for the MIT license, TailAdmin attribution and source revision, and UH logo provenance.

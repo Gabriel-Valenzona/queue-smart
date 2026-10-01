@@ -1,6 +1,7 @@
 MIT License
 
 Copyright (c) 2026 Gabriel-Valenzona
+Copyright (c) 2023 TailAdmin (adapted components and styles)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,3 +20,9 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+TailAdmin source: https://github.com/TailAdmin/free-nextjs-admin-dashboard
+Revision: 4fba02489c93171220c13cd2b44cc0161ff6d2a1
+
+UH logos are University of Houston marks and are excluded from this MIT license.
+Source: https://www.uh.edu/brand/brand-identity/master-brand-logos-and-marks/interlocking-uh/
