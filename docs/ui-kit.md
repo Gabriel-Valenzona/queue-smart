@@ -4,14 +4,33 @@ Visit `/ui-kit` for the live gallery. The shared kit adapts TailAdmin’s free N
 
 ## What is ready
 
-| Route       | Purpose                                                    |
-| ----------- | ---------------------------------------------------------- |
-| `/`         | Public introduction, login/register links, gallery link    |
-| `/login`    | Validated login preview; does not authenticate             |
-| `/register` | Validated registration preview; does not create an account |
-| `/ui-kit`   | Shared components, examples, states, and layout previews   |
+| Route                | Purpose                                                            |
+| -------------------- | ------------------------------------------------------------------ |
+| `/`                  | Public introduction, login/register links, gallery link            |
+| `/login`             | Validated preview; opens the fixed user demo, discards credentials |
+| `/register`          | Validated registration preview; does not create an account         |
+| `/ui-kit`            | Shared components, examples, states, and layout previews           |
+| `/user`              | User dashboard: mock queue, available services, and notifications  |
+| `/user/join-queue`   | Validated service selection and simulated join/leave actions       |
+| `/user/queue-status` | Position, estimated wait, status, and manual demo controls         |
+| `/user/history`      | Example and simulated participation outcomes                       |
+| `/admin`             | Independent administrator service/queue-management simulation      |
 
-The user/admin feature pages remain for their assigned teammates. There are no API handlers, accounts, persisted queue data, queue ordering rules, or backend permissions in this kit. A successful authentication-form submission only acknowledges valid inputs and clears the form. It never stores credentials or sets an authenticated role.
+There are no API handlers, real accounts, persisted queue data, queue ordering rules, or backend permissions in this kit. Login validates and clears the form, then opens the fixed user demo. Registration acknowledges valid inputs and clears the form. Neither stores credentials nor sets an authenticated role. The administrator and user demos are currently independent; their services and queues do not synchronize.
+
+## User workspace demo
+
+The user layout mounts one provider and `AppShell` around all four screens. Internal navigation preserves the React state; refreshing, leaving the workspace, or **Reset demo** restores the populated fixtures. Each screen displays a frontend-demo notice identifying the account, services, queues, history, and notifications as simulated.
+
+The initial account is Alex Morgan (`alex@example.com`), waiting in Student services at position 3 with a 15-minute estimated wait. Student services (5-minute duration, Medium priority) and Technology support (10 minutes, High) are open; Academic advising (15 minutes, Low) is closed. Three dated example history records and two matching demo notifications make the initial displays useful for screenshots.
+
+Only one waiting/almost-ready participation is permitted. **Leave queue** opens a confirmation dialog; **Keep waiting**, Escape, or backdrop dismissal preserves it. **Confirm leave** records Canceled and clears it. Joining validates the selected open service, updates the shared state, and opens Queue Status. Dashboard service links preselect the service through the `service` query parameter; invalid or repeated parameters display a selection error.
+
+**Advance demo queue** moves through predefined snapshots: Student services 3/15 minutes → 2/10 → 1/5 → Served/0; Technology support 3/30 → 2/20 → 1/10 → Served/0. Position 1 means the next waiting user and displays Almost ready. These sample waits are not an estimator. Priority is displayed as metadata, not an ordering algorithm.
+
+Advancement, joining, leaving, and service completion supply in-app updates to the header and dashboard. Completion records one Served history outcome and allows joining again; the served summary remains until another join or reset. History uses the original join date and newest-first ordering. The empty fixture is available to QA no-queue/history/notification states.
+
+Shared types and fixtures live in `src/types/user-demo.ts` and `src/data/user-demo.ts`. Transitions live in the frontend demo controller, separate from `QueueSummary`, table, notification, and field presentation. This is A2 simulation, not an API or future storage boundary.
 
 ## Component map
 
@@ -38,7 +57,7 @@ Import individual files directly. All interaction components stay small client c
 
 ## Building a page
 
-Wrap each user/admin route group once with `AppShell` in its layout when those pages are implemented. Pass navigation for that role; the shell does not infer permissions. Do not nest shells. Only link to implemented routes.
+Wrap each user/admin route group once with `AppShell`. The user workspace already supplies this shell from its layout, so user page components should compose content without nesting another shell. Pass navigation for that role; the shell does not infer permissions. Only link to implemented routes.
 
 ```tsx
 import AppShell, { type NavItem } from "@/components/layout/AppShell";
@@ -49,8 +68,8 @@ const navigation: NavItem[] = [
   { label: "History", href: "/user/history", icon: <List /> },
 ];
 
-// Example for the teammate implementing /user/history:
-export default function HistoryPage() {
+// Example for a separate workspace; /user/history already inherits a shell:
+export default function ExampleWorkspace() {
   return (
     <AppShell navigation={navigation} title="User">
       <PageHeader title="History" description="Your past queues." />
@@ -114,6 +133,6 @@ Use `src/data` for static fixtures and shared types when multiple feature pages 
 
 Run `npm run lint`, `npx tsc --noEmit`, and `npm run build`. If the local sandbox blocks Turbopack's worker ports, `npm run build -- --webpack` checks the same source with Next's alternative bundler without changing project scripts. Google font downloading requires network access during a clean build.
 
-Check light/dark modes, mobile navigation, keyboard focus and Escape, required/invalid/valid inputs, controlled resets, table overflow, branding on/off, and all links. A2 feature pages and mock workflows still need to be implemented and tested by their owners.
+Check light/dark modes, mobile navigation, keyboard focus and Escape, required/invalid/valid inputs, controlled resets, table overflow, branding on/off, and all links. For user screens, also check shared state across navigation, join/leave confirmation, every demo stage, history/notification consistency, closed-service and duplicate prevention, and refresh/reset behavior.
 
 See `LICENSE` for the MIT license, TailAdmin attribution and source revision, and UH logo provenance.

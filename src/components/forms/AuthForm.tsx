@@ -2,12 +2,14 @@
 // Form composition adapted from TailAdmin SignInForm/SignUpForm (MIT).
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import { Input, PasswordInput } from "./Fields";
 import Button from "@/components/ui/Button";
 import Alert from "@/components/ui/Alert";
 
 export default function AuthForm({ mode }: { mode: "login" | "register" }) {
   const register = mode === "register";
+  const router = useRouter();
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitted, setSubmitted] = useState(false);
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -36,6 +38,10 @@ export default function AuthForm({ mode }: { mode: "login" | "register" }) {
       return;
     }
     form.reset();
+    if (!register) {
+      router.push("/user");
+      return;
+    }
     setSubmitted(true);
   }
   return (
@@ -51,8 +57,9 @@ export default function AuthForm({ mode }: { mode: "login" | "register" }) {
         </p>
       </div>
       <div className="mb-6 rounded-lg bg-gray-50 px-4 py-3 text-xs leading-5 text-gray-500 dark:bg-gray-800 dark:text-gray-400">
-        Frontend preview. This form checks your entries only; account access is
-        not connected yet.
+        {register
+          ? "Frontend preview. This form checks your entries only; no account is created."
+          : "Frontend demo. Valid entries open Alex Morgan’s example profile. Your credentials are not saved, and no real sign-in occurs."}
       </div>
       <form noValidate onSubmit={submit} className="space-y-5">
         <Input
