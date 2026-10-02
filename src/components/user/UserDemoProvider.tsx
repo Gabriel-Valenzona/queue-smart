@@ -1,10 +1,20 @@
 "use client";
 
-import { createContext, useContext, useReducer, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useRouter } from "next/navigation";
-import { createPopulatedUserDemo } from "@/data/user-demo";
-import { getJoinError, userDemoReducer } from "@/lib/user-demo";
-import type { UserDemoState } from "@/types/user-demo";
+import {
+  createPopulatedUserDemo,
+  createUserDemoNotifications,
+} from "@/data/user-demo";
+import { transitionUserDemo } from "@/lib/user-demo";
+import { useNotifications } from "@/components/notifications/NotificationsProvider";
+import type { UserDemoAction, UserDemoState } from "@/types/user-demo";
 
 type UserDemoContextValue = {
   state: UserDemoState;
@@ -22,19 +32,36 @@ export default function UserDemoProvider({
   children: ReactNode;
   initialState?: UserDemoState;
 }) {
-  const [state, dispatch] = useReducer(
-    userDemoReducer,
-    initialState,
-    (seed) => seed ?? createPopulatedUserDemo(),
+  const [state, setState] = useState(
+    () => initialState ?? createPopulatedUserDemo(),
   );
+  const latestState = useRef(state);
+  const { notify, resetNotifications } = useNotifications();
   const router = useRouter();
+
+  function applyAction(action: UserDemoAction) {
+    // Event handlers see the last accepted state even before React renders a batch.
+    const result = transitionUserDemo(latestState.current, action);
+    latestState.current = result.state;
+    setState(result.state);
+    if (result.accepted) {
+      if (action.type === "reset")
+        resetNotifications(createUserDemoNotifications());
+      else if (result.notification) notify(result.notification);
+    }
+    return result.accepted;
+  }
+
   function eventDetails() {
     return { id: crypto.randomUUID(), at: new Date().toISOString() };
   }
   function joinQueue(serviceId: string) {
-    const valid = !getJoinError(state, serviceId);
-    dispatch({ type: "join", serviceId, ...eventDetails() });
-    if (valid) router.push("/user/queue-status");
+    const accepted = applyAction({
+      type: "join",
+      serviceId,
+      ...eventDetails(),
+    });
+    if (accepted) router.push("/user/queue-status");
   }
   return (
     <UserDemoContext.Provider
@@ -42,20 +69,21 @@ export default function UserDemoProvider({
         state,
         joinQueue,
         leaveQueue: (participationId, expectedStage) =>
-          dispatch({
+          applyAction({
             type: "leave",
             participationId,
             expectedStage,
             ...eventDetails(),
           }),
         advanceQueue: (participationId, expectedStage) =>
-          dispatch({
+          applyAction({
             type: "advance",
             participationId,
             expectedStage,
             ...eventDetails(),
           }),
-        resetDemo: () => dispatch({ type: "reset", id: crypto.randomUUID() }),
+        resetDemo: () =>
+          applyAction({ type: "reset", id: crypto.randomUUID() }),
       }}
     >
       {children}

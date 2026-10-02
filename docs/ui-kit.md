@@ -14,30 +14,25 @@ Visit `/ui-kit` for the live gallery. The shared kit adapts TailAdmin’s free N
 | `/user/join-queue`   | Validated service selection and simulated join/leave actions       |
 | `/user/queue-status` | Position, estimated wait, status, and manual demo controls         |
 | `/user/history`      | Example and simulated participation outcomes                       |
+| `/user/notifications` | Shared user queue updates and status changes, with read/dismiss controls |
 | `/admin`             | Independent administrator service/queue-management simulation      |
-| Route            | Purpose                                                    |
-| ---------------- | ---------------------------------------------------------- |
-| `/`              | Public introduction, login/register links, gallery link    |
-| `/login`         | Validated login preview; does not authenticate             |
-| `/register`      | Validated registration preview; does not create an account |
-| `/notifications` | In-app notification center: feed, filters, and settings    |
-| `/ui-kit`        | Shared components, examples, states, and layout previews   |
+| `/notifications` | Independent notification demo: sample feeds, filters, and settings |
 
 There are no API handlers, real accounts, persisted queue data, queue ordering rules, or backend permissions in this kit. Login validates and clears the form, then opens the fixed user demo. Registration acknowledges valid inputs and clears the form. Neither stores credentials nor sets an authenticated role. The administrator and user demos are currently independent; their services and queues do not synchronize.
 
 ## User workspace demo
 
-The user layout mounts one provider and `AppShell` around all four screens. Internal navigation preserves the React state; refreshing, leaving the workspace, or **Reset demo** restores the populated fixtures. Each screen displays a frontend-demo notice identifying the account, services, queues, history, and notifications as simulated.
+The user layout mounts one `NotificationsProvider`, the queue demo provider, and `AppShell` around all five user screens. Internal navigation preserves their React state; refreshing, leaving the workspace, or **Reset demo** restores the populated fixtures. Each screen displays a frontend-demo notice identifying the account, services, queues, history, and notifications as simulated. Reset restores the notification feed/read state and clears pending toasts.
 
-The initial account is Alex Morgan (`alex@example.com`), waiting in Student services at position 3 with a 15-minute estimated wait. Student services (5-minute duration, Medium priority) and Technology support (10 minutes, High) are open; Academic advising (15 minutes, Low) is closed. Three dated example history records and two matching demo notifications make the initial displays useful for screenshots.
+The initial account is Alex Morgan (`alex@example.com`), waiting in Student services at position 3 with a 15-minute estimated wait. Student services (5-minute duration, Medium priority) and Technology support (10 minutes, High) are open; Academic advising (15 minutes, Low) is closed. Three dated example history records and two matching demo notifications (one unread) make the initial displays useful for screenshots.
 
 Only one waiting/almost-ready participation is permitted. **Leave queue** opens a confirmation dialog; **Keep waiting**, Escape, or backdrop dismissal preserves it. **Confirm leave** records Canceled and clears it. Joining validates the selected open service, updates the shared state, and opens Queue Status. Dashboard service links preselect the service through the `service` query parameter; invalid or repeated parameters display a selection error.
 
 **Advance demo queue** moves through predefined snapshots: Student services 3/15 minutes → 2/10 → 1/5 → Served/0; Technology support 3/30 → 2/20 → 1/10 → Served/0. Position 1 means the next waiting user and displays Almost ready. These sample waits are not an estimator. Priority is displayed as metadata, not an ordering algorithm.
 
-Advancement, joining, leaving, and service completion supply in-app updates to the header and dashboard. Completion records one Served history outcome and allows joining again; the served summary remains until another join or reset. History uses the original join date and newest-first ordering. The empty fixture is available to QA no-queue/history/notification states.
+Advancement, joining, leaving, and service completion supply in-app updates to the header, dashboard, and `/user/notifications`. Runyelle's `NotificationBell`, `NotificationsSummary`, and `NotificationFeed` read the same provider-owned feed, so reading or dismissing an item updates all three displays. Completion records one Served history outcome and allows joining again; the served summary remains until another join or reset. History uses the original join date and newest-first ordering. Empty fixtures support QA no-queue/history/notification states.
 
-Shared types and fixtures live in `src/types/user-demo.ts` and `src/data/user-demo.ts`. Transitions live in the frontend demo controller, separate from `QueueSummary`, table, notification, and field presentation. This is A2 simulation, not an API or future storage boundary.
+Shared queue types and fixtures live in `src/types/user-demo.ts` and `src/data/user-demo.ts`. Queue state owns participation/history/feedback, not a second notification array. Pure transitions return updated queue state plus an optional `NewNotification`; the frontend controller forwards only accepted events to `notify`. `NotificationsProvider` owns the feed/read state and toast delivery. This is A2 simulation, not an API or future storage boundary.
 
 ## Component map
 
@@ -87,7 +82,7 @@ export default function ExampleWorkspace() {
 }
 ```
 
-`AppShell` accepts `children`, `navigation`, optional `title`, and optional `headerActions`. Put `AccountMenu` and `NotificationMenu` in `headerActions` when page-owned example data is available. Navigation collapses at desktop widths and becomes a dismissible modal drawer below 1280px. Use ordinary links for routes and section fragments for gallery-style navigation.
+`AppShell` accepts `children`, `navigation`, optional `title`, and optional `headerActions`. Put `AccountMenu` and `NotificationBell` in `headerActions` for a workspace wrapped in `NotificationsProvider`; `NotificationMenu` remains useful for static examples. Navigation collapses at desktop widths and becomes a dismissible modal drawer below 1280px. Use ordinary links for routes and section fragments for gallery-style navigation.
 
 ## Forms and actions
 
@@ -127,30 +122,31 @@ For custom controls, `FormField` takes `id`, `label`, `hint`, `error`, `required
 
 ## Notification system
 
-In-app notifications live in `src/components/notifications`. `NotificationsProvider` holds the feed in React state, counts what is unread, and renders the floating `ToastStack`. Wrap a route's page (or its layout) once, above anything that reads notifications, and pass the role's example feed from `src/data/notifications.ts`.
+Runyelle's in-app notification components live in `src/components/notifications`. `NotificationsProvider` holds the feed in React state, counts what is unread, and renders the floating `ToastStack`. Mount it once in the workspace layout, above all consumers; the user workspace already does this for all five `/user` routes. Do not mount another provider inside individual user screens. The standalone `/notifications` demo retains its independent provider, sample feed, and settings examples.
 
 ```tsx
 import NotificationsProvider from "@/components/notifications/NotificationsProvider";
 import NotificationBell from "@/components/notifications/NotificationBell";
 import NotificationsSummary from "@/components/notifications/NotificationsSummary";
-import { sampleUserNotifications } from "@/data/notifications";
+import { createUserDemoNotifications } from "@/data/user-demo";
 
-export default function DashboardPage() {
+// Example layout composition; the existing user layout already provides this.
+export default function ExampleUserLayout() {
   return (
-    <NotificationsProvider initial={sampleUserNotifications}>
+    <NotificationsProvider initial={createUserDemoNotifications()}>
       <AppShell
         navigation={navigation}
         title="User"
-        headerActions={<NotificationBell viewAllHref="/notifications" />}
+        headerActions={<NotificationBell viewAllHref="/user/notifications" />}
       >
-        <NotificationsSummary href="/notifications" />
+        <NotificationsSummary href="/user/notifications" />
       </AppShell>
     </NotificationsProvider>
   );
 }
 ```
 
-`useNotifications()` returns `notifications`, `unreadCount`, `notify`, `setRead`, `markRead`, `markAllRead`, `dismiss`, and `clearAll`. Call `notify` from your own interaction so the bell, the toast, and the feed all update together:
+`useNotifications()` returns `notifications`, `unreadCount`, `toasts`, `notify`, `setRead`, `markRead`, `markAllRead`, `dismiss`, `clearAll`, `dismissToast`, and `resetNotifications`. Call `notify` from your own interaction so the bell, the toast, and the feed all update together:
 
 ```tsx
 const { notify } = useNotifications();
@@ -175,7 +171,9 @@ notify({
 
 Each notification carries a `category` (`queue-update`, `status-change`, `service`, `system`) that selects its icon and label, and a `tone` (`info`, `success`, `warning`, `error`) that selects its color only. Keep the meaning in the title and detail so color is never the single cue. `time` is a display label the page supplies, with optional `createdAt` for `<time dateTime>`; nothing here formats relative time or decides when a notification should exist.
 
-The provider is state, not storage: notifications reset on reload, and no page sends email, push, or SMS. Queue triggers, delivery, and read state belong to A3 and A4.
+`resetNotifications(items: Notification[])` is an additive provider API for restoring a supplied fixture feed. It copies the supplied entries, restores their read state, clears toasts, and preserves the generated-ID counter so future events cannot reuse earlier generated IDs. The user demo reset uses it alongside the queue reset.
+
+The provider is frontend state, not storage: notifications reset on reload, and no page sends email, push, or SMS. A2 interactions simulate queue triggers and read controls. Backend triggers and persistent read/delivery state belong to later assignments. Existing sample user/administrator notification fixtures remain available for independent component demonstrations.
 
 ## Branding and styling
 

@@ -27,6 +27,7 @@ export type NotificationsValue = {
   markAllRead: () => void;
   dismiss: (id: string) => void;
   clearAll: () => void;
+  resetNotifications: (items: Notification[]) => void;
   dismissToast: (id: string) => void;
 };
 
@@ -101,6 +102,12 @@ export default function NotificationsProvider({
     setToasts([]);
   }, []);
 
+  // Restore page-owned examples without emitting toasts or reusing generated IDs.
+  const resetNotifications = useCallback((items: Notification[]) => {
+    setNotifications(items.map((item) => ({ ...item })));
+    setToasts([]);
+  }, []);
+
   const dismissToast = useCallback((id: string) => {
     setToasts((current) => current.filter((item) => item.id !== id));
   }, []);
@@ -126,6 +133,7 @@ export default function NotificationsProvider({
       markAllRead,
       dismiss,
       clearAll,
+      resetNotifications,
       dismissToast,
     }),
     [
@@ -137,6 +145,7 @@ export default function NotificationsProvider({
       markAllRead,
       dismiss,
       clearAll,
+      resetNotifications,
       dismissToast,
     ],
   );

@@ -1,5 +1,3 @@
-import type { NotificationItem } from "@/components/layout/HeaderMenus";
-
 /** Display models for the A2 demo, not backend entities or queue policies. */
 export type QueueSnapshot = {
   position: number | null;
@@ -35,7 +33,6 @@ export type DemoHistoryRecord = {
 export type UserDemoState = {
   current: DemoParticipation | null;
   history: DemoHistoryRecord[];
-  notifications: NotificationItem[];
   feedback: { kind: "success" | "error"; message: string } | null;
 };
 

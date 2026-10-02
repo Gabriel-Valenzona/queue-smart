@@ -2,12 +2,14 @@
 
 import type { ReactNode } from "react";
 import AppShell, { type NavItem } from "@/components/layout/AppShell";
-import { AccountMenu, NotificationMenu } from "@/components/layout/HeaderMenus";
+import { AccountMenu } from "@/components/layout/HeaderMenus";
+import NotificationBell from "@/components/notifications/NotificationBell";
 import Alert from "@/components/ui/Alert";
 import Grid from "@/components/icons/Grid";
 import Plus from "@/components/icons/Plus";
 import Clock from "@/components/icons/Clock";
 import Table from "@/components/icons/Table";
+import Bell from "@/components/icons/Bell";
 import { demoAccount } from "@/data/user-demo";
 import { useUserDemo } from "./UserDemoProvider";
 
@@ -16,6 +18,7 @@ const navigation: NavItem[] = [
   { label: "Join queue", href: "/user/join-queue", icon: <Plus /> },
   { label: "Queue status", href: "/user/queue-status", icon: <Clock /> },
   { label: "History", href: "/user/history", icon: <Table /> },
+  { label: "Notifications", href: "/user/notifications", icon: <Bell /> },
 ];
 
 export default function UserWorkspace({ children }: { children: ReactNode }) {
@@ -26,7 +29,7 @@ export default function UserWorkspace({ children }: { children: ReactNode }) {
       title="User workspace"
       headerActions={
         <>
-          <NotificationMenu items={state.notifications} />
+          <NotificationBell viewAllHref="/user/notifications" />
           <AccountMenu
             name={`${demoAccount.name} · Demo`}
             email={demoAccount.email}

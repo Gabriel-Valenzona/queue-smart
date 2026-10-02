@@ -1,4 +1,5 @@
 import type { DemoService, UserDemoState } from "@/types/user-demo";
+import type { Notification } from "@/data/notifications";
 
 export const demoAccount = { name: "Alex Morgan", email: "alex@example.com" };
 
@@ -44,7 +45,7 @@ export const demoServices: readonly DemoService[] = [
 ];
 
 export function createEmptyUserDemo(): UserDemoState {
-  return { current: null, history: [], notifications: [], feedback: null };
+  return { current: null, history: [], feedback: null };
 }
 
 export function createPopulatedUserDemo(): UserDemoState {
@@ -78,21 +79,34 @@ export function createPopulatedUserDemo(): UserDemoState {
         outcome: "served",
       },
     ],
-    notifications: [
-      {
-        id: "example-notification-2",
-        title: "Demo · Wait time updated",
-        detail: "Your estimated wait for Student services is 15 minutes.",
-        time: "Demo · Example update",
-        unread: true,
-      },
-      {
-        id: "example-notification-1",
-        title: "Demo · You’re in the queue",
-        detail: "Your place in Student services is confirmed at position 3.",
-        time: "Demo · Example confirmation",
-      },
-    ],
     feedback: null,
   };
+}
+
+/** Matching examples for Runyelle's shared notification display system. */
+export function createUserDemoNotifications(): Notification[] {
+  return [
+    {
+      id: "example-notification-2",
+      category: "queue-update",
+      tone: "info",
+      title: "Demo · Wait time updated",
+      detail: "Your estimated wait for Student services is 15 minutes.",
+      service: "Student services",
+      time: "Demo · Example update",
+      createdAt: "2026-10-01T10:01:00Z",
+      read: false,
+    },
+    {
+      id: "example-notification-1",
+      category: "queue-update",
+      tone: "info",
+      title: "Demo · You’re in the queue",
+      detail: "Your place in Student services is confirmed at position 3.",
+      service: "Student services",
+      time: "Demo · Example confirmation",
+      createdAt: "2026-10-01T10:00:00Z",
+      read: true,
+    },
+  ];
 }
