@@ -2,7 +2,12 @@
 import { useState, type FormEvent } from "react";
 import AppShell, { type NavItem } from "@/components/layout/AppShell";
 import PageHeader from "@/components/layout/PageHeader";
-import { AccountMenu, NotificationMenu } from "@/components/layout/HeaderMenus";
+import { AccountMenu } from "@/components/layout/HeaderMenus";
+import NotificationsProvider, {
+  useNotifications,
+} from "@/components/notifications/NotificationsProvider";
+import NotificationBell from "@/components/notifications/NotificationBell";
+import NotificationFeed from "@/components/notifications/NotificationFeed";
 import Button from "@/components/ui/Button";
 import Card, { CardBody, CardHeader, StatCard } from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
@@ -23,6 +28,7 @@ import Bell from "@/components/icons/Bell";
 import Clock from "@/components/icons/Clock";
 import Plus from "@/components/icons/Plus";
 import Avatar from "@/components/ui/Avatar";
+import { sampleAdminNotifications } from "@/data/notifications";
 
 type Service = {
   id: string;
@@ -94,7 +100,7 @@ const emptyDraft: ServiceDraft = {
   priority: "medium",
 };
 
-export default function AdminPage() {
+function AdminWorkspace() {
   const [services, setServices] = useState(initialServices);
   const [queues, setQueues] = useState(initialQueues);
   const [selectedServiceId, setSelectedServiceId] = useState(
@@ -104,29 +110,7 @@ export default function AdminPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [draft, setDraft] = useState<ServiceDraft>(emptyDraft);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [notice, setNotice] = useState("");
-  const [notifications, setNotifications] = useState([
-    {
-      id: "n-1",
-      title: "Queue is moving",
-      detail: "Student services has served its next user.",
-      time: "8 min ago",
-      unread: true,
-    },
-    {
-      id: "n-2",
-      title: "Queue paused",
-      detail: "IT help desk is currently closed to new arrivals.",
-      time: "22 min ago",
-      unread: true,
-    },
-    {
-      id: "n-3",
-      title: "Service is open",
-      detail: "Records office is accepting users.",
-      time: "1 hour ago",
-    },
-  ]);
+  const { notify, unreadCount } = useNotifications();
 
   const activeService =
     services.find((service) => service.id === selectedServiceId) ?? services[0];
@@ -136,14 +120,6 @@ export default function AdminPage() {
     0,
   );
   const openCount = services.filter((service) => service.open).length;
-
-  function announce(title: string, detail: string) {
-    setNotice(title);
-    setNotifications((current) => [
-      { id: `n-${Date.now()}`, title, detail, time: "Just now", unread: true },
-      ...current,
-    ]);
-  }
 
   function startCreate() {
     setEditingService(null);
@@ -197,7 +173,13 @@ export default function AdminPage() {
             : service,
         ),
       );
-      announce("Service updated", `${draft.name.trim()} was updated.`);
+      notify({
+        category: "service",
+        tone: "success",
+        title: "Service updated",
+        detail: `${draft.name.trim()} was updated.`,
+        service: draft.name.trim(),
+      });
     } else {
       const service: Service = {
         ...draft,
@@ -210,7 +192,13 @@ export default function AdminPage() {
       setServices((current) => [...current, service]);
       setQueues((current) => ({ ...current, [service.id]: [] }));
       setSelectedServiceId(service.id);
-      announce("Service created", `${service.name} is ready to configure.`);
+      notify({
+        category: "service",
+        tone: "success",
+        title: "Service created",
+        detail: `${service.name} is ready to configure.`,
+        service: service.name,
+      });
     }
     setModalOpen(false);
   }
@@ -221,10 +209,13 @@ export default function AdminPage() {
         item.id === service.id ? { ...item, open: !item.open } : item,
       ),
     );
-    announce(
-      service.open ? "Queue closed" : "Queue opened",
-      `${service.name} is ${service.open ? "closed" : "open"} to new arrivals.`,
-    );
+    notify({
+      category: "service",
+      tone: service.open ? "warning" : "success",
+      title: service.open ? "Queue closed" : "Queue opened",
+      detail: `${service.name} is ${service.open ? "closed" : "open"} to new arrivals.`,
+      service: service.name,
+    });
   }
 
   function moveEntry(index: number, direction: -1 | 1) {
@@ -235,7 +226,13 @@ export default function AdminPage() {
       [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
       return { ...current, [activeService.id]: reordered };
     });
-    announce("Queue order updated", `${activeService.name} order was changed.`);
+    notify({
+      category: "queue-update",
+      tone: "info",
+      title: "Queue order updated",
+      detail: `${activeService.name} order was changed.`,
+      service: activeService.name,
+    });
   }
 
   function removeEntry(entry: QueueEntry) {
@@ -246,7 +243,13 @@ export default function AdminPage() {
         (item) => item.id !== entry.id,
       ),
     }));
-    announce("User removed", `${entry.name} was removed from the queue.`);
+    notify({
+      category: "queue-update",
+      tone: "warning",
+      title: "User removed",
+      detail: `${entry.name} was removed from the queue.`,
+      service: activeService.name,
+    });
   }
 
   function serveNext() {
@@ -256,7 +259,13 @@ export default function AdminPage() {
       ...current,
       [activeService.id]: (current[activeService.id] ?? []).slice(1),
     }));
-    announce("User served", `${served.name} (${served.ticket}) was served.`);
+    notify({
+      category: "status-change",
+      tone: "success",
+      title: "User served",
+      detail: `${served.name} (${served.ticket}) was served.`,
+      service: activeService.name,
+    });
   }
 
   return (
@@ -265,7 +274,7 @@ export default function AdminPage() {
       title="Administration"
       headerActions={
         <>
-          <NotificationMenu items={notifications} />
+          <NotificationBell viewAllHref="/notifications" />
           <AccountMenu
             name="Alex Morgan"
             email="alex@example.com"
@@ -289,15 +298,6 @@ export default function AdminPage() {
       />
 
       <div className="space-y-8">
-        {notice && (
-          <p
-            role="status"
-            className="border-l-4 border-brand-500 bg-brand-50 px-4 py-3 text-sm text-gray-700 dark:bg-brand-500/10 dark:text-gray-200"
-          >
-            {notice}
-          </p>
-        )}
-
         <section id="overview" className="scroll-mt-28 space-y-5">
           <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard
@@ -320,7 +320,7 @@ export default function AdminPage() {
             />
             <StatCard
               label="New notifications"
-              value={notifications.filter((item) => item.unread).length}
+              value={unreadCount}
               description="Queue activity and status changes"
               icon={<Bell />}
             />
@@ -579,35 +579,11 @@ export default function AdminPage() {
         </section>
 
         <section id="notifications" className="scroll-mt-28">
-          <Card>
-            <CardHeader
-              title="Recent notifications"
-              description="In-app updates for service and queue activity."
-            />
-            <CardBody>
-              <ul className="divide-y divide-gray-100 dark:divide-gray-800">
-                {notifications.slice(0, 5).map((item) => (
-                  <li key={item.id} className="flex gap-4 py-4 first:pt-0 last:pb-0">
-                    <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-500 dark:bg-brand-500/10 dark:text-brand-400">
-                      <Bell />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-sm font-medium">{item.title}</p>
-                        {item.unread && <Badge color="warning" size="sm">New</Badge>}
-                      </div>
-                      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                        {item.detail}
-                      </p>
-                    </div>
-                    <time className="shrink-0 text-xs text-gray-500 dark:text-gray-400">
-                      {item.time}
-                    </time>
-                  </li>
-                ))}
-              </ul>
-            </CardBody>
-          </Card>
+          <NotificationFeed
+            title="Service and queue notifications"
+            description="In-app updates generated by the actions on this page."
+            limit={6}
+          />
         </section>
       </div>
 
@@ -694,5 +670,13 @@ export default function AdminPage() {
         </form>
       </Modal>
     </AppShell>
+  );
+}
+
+export default function AdminPage() {
+  return (
+    <NotificationsProvider initial={sampleAdminNotifications}>
+      <AdminWorkspace />
+    </NotificationsProvider>
   );
 }

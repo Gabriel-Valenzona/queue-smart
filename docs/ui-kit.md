@@ -15,6 +15,13 @@ Visit `/ui-kit` for the live gallery. The shared kit adapts TailAdmin’s free N
 | `/user/queue-status` | Position, estimated wait, status, and manual demo controls         |
 | `/user/history`      | Example and simulated participation outcomes                       |
 | `/admin`             | Independent administrator service/queue-management simulation      |
+| Route            | Purpose                                                    |
+| ---------------- | ---------------------------------------------------------- |
+| `/`              | Public introduction, login/register links, gallery link    |
+| `/login`         | Validated login preview; does not authenticate             |
+| `/register`      | Validated registration preview; does not create an account |
+| `/notifications` | In-app notification center: feed, filters, and settings    |
+| `/ui-kit`        | Shared components, examples, states, and layout previews   |
 
 There are no API handlers, real accounts, persisted queue data, queue ordering rules, or backend permissions in this kit. Login validates and clears the form, then opens the fixed user demo. Registration acknowledges valid inputs and clears the form. Neither stores credentials nor sets an authenticated role. The administrator and user demos are currently independent; their services and queues do not synchronize.
 
@@ -48,7 +55,8 @@ Shared types and fixtures live in `src/types/user-demo.ts` and `src/data/user-de
 | Card typography              | `@/components/ui/EmptyState`                       | Empty queues/history with an optional action                                                        |
 | Sidebar/header               | `@/components/layout/AppShell`                     | Application layout and typed `NavItem[]`                                                            |
 | PageBreadCrumb               | `@/components/layout/PageHeader`                   | Heading, description, breadcrumbs, optional action                                                  |
-| Header dropdowns             | `@/components/layout/HeaderMenus`                  | `AccountMenu`, `NotificationMenu`                                                                   |
+| Header dropdowns             | `@/components/layout/HeaderMenus`                  | `AccountMenu`, static `NotificationMenu`                                                            |
+| Notification system          | `@/components/notifications/*`                     | `NotificationsProvider`, `NotificationBell`, `NotificationFeed`, `NotificationsSummary`             |
 | Authentication layout        | `@/components/layout/AuthLayout`                   | Responsive form + brand panel                                                                       |
 | Public layouts               | `@/components/layout/PublicHeader`, `PublicFooter` | Landing-page navigation and footer                                                                  |
 | Branding/theme               | `@/components/layout/Brand`, `ThemeToggle`         | Shared logo/name and appearance control                                                             |
@@ -113,9 +121,61 @@ For custom controls, `FormField` takes `id`, `label`, `hint`, `error`, `required
 - Badges accept `color`, `variant="light" | "solid"`, `size="sm" | "md"`, and optional start/end icons.
 - Alerts take `variant="success" | "info" | "warning" | "error"`, `title`, and `message`. Only supply `showLink`, `linkHref`, and `linkText` together when an actual destination exists.
 - `Modal` takes `open`, `onClose`, `title`, and `children`. Use its controlled state to close after an action. A shared native-dialog hook explicitly contains Tab and Shift+Tab focus; closing restores focus. Escape and backdrop dismiss it. Do not nest modal dialogs.
-- `Dropdown` takes an accessible `label`, a non-interactive `trigger` element, and children. Put ordinary links/buttons inside; it is a disclosure, not an ARIA menu. Tab enters its contents; Escape closes and returns focus. Use `align="start"` for triggers near the left edge; the default `align="end"` suits header actions near the right edge. Check the opened panel on mobile, as well as the closed trigger.
+- `Dropdown` takes an accessible `label`, a non-interactive `trigger` element, and children. Put ordinary links/buttons inside; it is a disclosure, not an ARIA menu. Tab enters its contents; Escape closes and returns focus. Use `align="start"` for triggers near the left edge; the default `align="end"` suits header actions near the right edge. `panelWidth` replaces the panel's width utility (`w-64` by default) for wider panels such as the notification list. Check the opened panel on mobile, as well as the closed trigger.
 - Use a table caption (visually hidden if appropriate) and `TableHead` for column labels. Tables scroll horizontally on small screens. Keep sorting, queue reordering, service lookup, and data ownership in the page/controller.
-- `NotificationMenu` displays supplied `NotificationItem[]`; it does not trigger or mark notifications. `AccountMenu` displays supplied identity and links; it does not grant a role.
+- `NotificationMenu` displays a supplied `NotificationItem[]` without state; pages that mount the notification system use `NotificationBell` instead. `AccountMenu` displays supplied identity and links; it does not grant a role.
+
+## Notification system
+
+In-app notifications live in `src/components/notifications`. `NotificationsProvider` holds the feed in React state, counts what is unread, and renders the floating `ToastStack`. Wrap a route's page (or its layout) once, above anything that reads notifications, and pass the role's example feed from `src/data/notifications.ts`.
+
+```tsx
+import NotificationsProvider from "@/components/notifications/NotificationsProvider";
+import NotificationBell from "@/components/notifications/NotificationBell";
+import NotificationsSummary from "@/components/notifications/NotificationsSummary";
+import { sampleUserNotifications } from "@/data/notifications";
+
+export default function DashboardPage() {
+  return (
+    <NotificationsProvider initial={sampleUserNotifications}>
+      <AppShell
+        navigation={navigation}
+        title="User"
+        headerActions={<NotificationBell viewAllHref="/notifications" />}
+      >
+        <NotificationsSummary href="/notifications" />
+      </AppShell>
+    </NotificationsProvider>
+  );
+}
+```
+
+`useNotifications()` returns `notifications`, `unreadCount`, `notify`, `setRead`, `markRead`, `markAllRead`, `dismiss`, and `clearAll`. Call `notify` from your own interaction so the bell, the toast, and the feed all update together:
+
+```tsx
+const { notify } = useNotifications();
+
+notify({
+  category: "status-change",
+  tone: "warning",
+  title: "You’re almost ready",
+  detail: "Please head to the service desk now.",
+  service: "Student services",
+});
+```
+
+| Component                 | Use                                                                        |
+| ------------------------- | -------------------------------------------------------------------------- |
+| `NotificationBell`        | Header action: unread count, newest items, mark all read, link to the page |
+| `NotificationFeed`        | Full card list with category filters, mark-as-read, dismiss, and clearing  |
+| `NotificationsSummary`    | Dashboard card with the newest items and an unread badge                   |
+| `NotificationPreferences` | Category switches plus a validated quiet-hours time range                  |
+| `NotificationRow`         | The shared row, with read toggle and dismiss, for your own lists           |
+| `ToastStack`              | Rendered by the provider; pass `showToasts={false}` to leave it out        |
+
+Each notification carries a `category` (`queue-update`, `status-change`, `service`, `system`) that selects its icon and label, and a `tone` (`info`, `success`, `warning`, `error`) that selects its color only. Keep the meaning in the title and detail so color is never the single cue. `time` is a display label the page supplies, with optional `createdAt` for `<time dateTime>`; nothing here formats relative time or decides when a notification should exist.
+
+The provider is state, not storage: notifications reset on reload, and no page sends email, push, or SMS. Queue triggers, delivery, and read state belong to A3 and A4.
 
 ## Branding and styling
 
