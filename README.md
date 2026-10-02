@@ -25,6 +25,7 @@ Each user screen identifies its data as simulated. The initial Alex Morgan accou
 Only one waiting/almost-ready participation is allowed. Leave the initial queue or finish it with **Advance demo queue** before joining another. Progression follows predefined position/wait snapshots through Waiting, Almost ready, and Served. These are sample values, not a wait-estimation or priority-ordering algorithm. Leaving or serving creates an in-app update and history record.
 
 State remains shared while navigating among `/user` routes. **Reset demo**, refreshing the browser, or leaving and returning to the user workspace restores the initial examples. Queue/account data and credentials are not stored in browser storage. The existing theme preference is separate.
+Available routes: `/` (landing), `/login` and `/register` (validation-only previews), `/admin` (administrator workspace), `/notifications` (in-app notification center), and `/ui-kit` (interactive component gallery). User/admin feature pages remain for the team to implement. No backend authentication or persistence is included.
 
 ## Getting Started
 

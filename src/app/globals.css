@@ -242,6 +242,21 @@
   }
 }
 
+@keyframes toast-enter {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@utility toast-enter {
+  animation: toast-enter 200ms ease-out;
+}
+
 .dark .custom-scrollbar::-webkit-scrollbar-thumb {
   background-color: #344054;
 }

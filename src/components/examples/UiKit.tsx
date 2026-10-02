@@ -24,6 +24,7 @@ import { Input, Checkbox, Radio, Switch } from "@/components/forms/Fields";
 import { branding } from "@/config/branding";
 import { sampleHistory, sampleNotifications } from "@/data/ui-kit";
 import ServiceFormExample from "./ServiceFormExample";
+import NotificationExample from "./NotificationExample";
 import Grid from "@/components/icons/Grid";
 import Plus from "@/components/icons/Plus";
 import List from "@/components/icons/List";
@@ -34,13 +35,15 @@ import User from "@/components/icons/User";
 import Clock from "@/components/icons/Clock";
 import ArrowRight from "@/components/icons/ArrowRight";
 import ChevronDown from "@/components/icons/ChevronDown";
+import Check from "@/components/icons/Check";
 
 const navigation: NavItem[] = [
   { label: "Overview", href: "/ui-kit#overview", icon: <Grid /> },
   { label: "Buttons", href: "/ui-kit#buttons", icon: <Plus /> },
   { label: "Form elements", href: "/ui-kit#forms", icon: <List /> },
   { label: "Cards & badges", href: "/ui-kit#display", icon: <Page /> },
-  { label: "Alerts & overlays", href: "/ui-kit#feedback", icon: <Bell /> },
+  { label: "Alerts & overlays", href: "/ui-kit#feedback", icon: <Check /> },
+  { label: "Notifications", href: "/ui-kit#notifications", icon: <Bell /> },
   { label: "Tables", href: "/ui-kit#tables", icon: <TableIcon /> },
   { label: "Branding & layouts", href: "/ui-kit#branding", icon: <User /> },
 ];
@@ -386,6 +389,18 @@ export default function UiKit() {
           <ImportExample>
             {
               'import Modal from "@/components/ui/Modal";\n\n<Modal open={open} onClose={() => setOpen(false)} title="Leave queue?">\n  {/* Supply your message and action buttons. */}\n</Modal>'
+            }
+          </ImportExample>
+        </Section>
+        <Section
+          id="notifications"
+          title="Notification system"
+          description="One in-app feed for queue updates and status changes: header bell, toasts, dashboard summary, and filters."
+        >
+          <NotificationExample />
+          <ImportExample>
+            {
+              'import NotificationsProvider from "@/components/notifications/NotificationsProvider";\nimport NotificationBell from "@/components/notifications/NotificationBell";\nimport NotificationFeed from "@/components/notifications/NotificationFeed";\n\n// Wrap the page once, then pass the bell to AppShell as a header action.\n<NotificationsProvider initial={sampleUserNotifications}>\n  <NotificationFeed />\n</NotificationsProvider>'
             }
           </ImportExample>
         </Section>
