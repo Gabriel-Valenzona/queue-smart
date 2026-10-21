@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import JoinQueueScreen from "@/components/user/JoinQueueScreen";
-import { demoServices } from "@/data/user-demo";
+import { getQueueStore } from "@/server/queue";
 
 export const metadata: Metadata = { title: "Join queue" };
 
@@ -16,7 +16,7 @@ export default async function JoinQueuePage({
     initialError =
       "Choose a single service. The link included more than one service.";
   } else if (service !== undefined) {
-    if (demoServices.some((item) => item.id === service))
+    if (getQueueStore().services.some((item) => item.id === service))
       initialServiceId = service;
     else
       initialError =

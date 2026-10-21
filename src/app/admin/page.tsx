@@ -1,5 +1,5 @@
 "use client";
-import { useState, type FormEvent } from "react";
+import { useCallback, useState, type FormEvent } from "react";
 import AppShell, { type NavItem } from "@/components/layout/AppShell";
 import PageHeader from "@/components/layout/PageHeader";
 import { AccountMenu } from "@/components/layout/HeaderMenus";
@@ -29,6 +29,11 @@ import Clock from "@/components/icons/Clock";
 import Plus from "@/components/icons/Plus";
 import Avatar from "@/components/ui/Avatar";
 import { sampleAdminNotifications } from "@/data/notifications";
+import { ApiError, queueApi, type QueueEntryView } from "@/lib/api/queues";
+import { usePolling } from "@/lib/usePolling";
+
+/** How often the admin view re-checks the queue API for user joins and leaves. */
+const POLL_INTERVAL_MS = 4000;
 
 type Service = {
   id: string;
@@ -39,7 +44,6 @@ type Service = {
   open: boolean;
 };
 
-type QueueEntry = { id: string; name: string; ticket: string; joined: string };
 type ServiceDraft = Omit<Service, "id" | "open" | "duration"> & {
   duration: string;
 };
@@ -51,47 +55,13 @@ const navigation: NavItem[] = [
   { label: "Notifications", href: "/admin#notifications", icon: <Bell /> },
 ];
 
-const initialServices: Service[] = [
-  {
-    id: "student-services",
-    name: "Student services",
-    description: "General student questions and support.",
-    duration: 10,
-    priority: "high",
-    open: true,
-  },
-  {
-    id: "records-office",
-    name: "Records office",
-    description: "Transcripts, enrollment verification, and records.",
-    duration: 15,
-    priority: "medium",
-    open: true,
-  },
-  {
-    id: "it-help-desk",
-    name: "IT help desk",
-    description: "Technology and account troubleshooting.",
-    duration: 12,
-    priority: "low",
-    open: false,
-  },
-];
+function formatJoined(iso: string) {
+  return new Intl.DateTimeFormat("en-US", { timeStyle: "short" }).format(new Date(iso));
+}
 
-const initialQueues: Record<string, QueueEntry[]> = {
-  "student-services": [
-    { id: "q-1", name: "Jordan Lee", ticket: "A-104", joined: "9:32 AM" },
-    { id: "q-2", name: "Taylor Nguyen", ticket: "A-105", joined: "9:38 AM" },
-    { id: "q-3", name: "Morgan Patel", ticket: "A-106", joined: "9:44 AM" },
-  ],
-  "records-office": [
-    { id: "q-4", name: "Casey Kim", ticket: "R-021", joined: "9:41 AM" },
-    { id: "q-5", name: "Avery Brooks", ticket: "R-022", joined: "9:48 AM" },
-  ],
-  "it-help-desk": [
-    { id: "q-6", name: "Riley Carter", ticket: "I-008", joined: "9:26 AM" },
-  ],
-};
+function errorMessage(error: unknown) {
+  return error instanceof ApiError ? error.message : "The queue service could not be reached.";
+}
 
 const emptyDraft: ServiceDraft = {
   name: "",
@@ -101,11 +71,14 @@ const emptyDraft: ServiceDraft = {
 };
 
 function AdminWorkspace() {
-  const [services, setServices] = useState(initialServices);
-  const [queues, setQueues] = useState(initialQueues);
-  const [selectedServiceId, setSelectedServiceId] = useState(
-    initialServices[0].id,
-  );
+  // Services load from the queue API; create/edit stays local until the
+  // service management API exists.
+  const [services, setServices] = useState<Service[]>([]);
+  const [queueLengths, setQueueLengths] = useState<Record<string, number>>({});
+  const [activeQueue, setActiveQueue] = useState<QueueEntryView[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [selectedServiceId, setSelectedServiceId] = useState("");
   const [editingService, setEditingService] = useState<Service | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [draft, setDraft] = useState<ServiceDraft>(emptyDraft);
@@ -114,12 +87,72 @@ function AdminWorkspace() {
 
   const activeService =
     services.find((service) => service.id === selectedServiceId) ?? services[0];
-  const activeQueue = activeService ? (queues[activeService.id] ?? []) : [];
-  const waitingCount = Object.values(queues).reduce(
-    (total, entries) => total + entries.length,
+  const activeServiceId = activeService?.id;
+  const waitingCount = Object.values(queueLengths).reduce(
+    (total, length) => total + length,
     0,
   );
   const openCount = services.filter((service) => service.open).length;
+
+  const refreshQueues = useCallback(async () => {
+    try {
+      const summaries = await queueApi.list();
+      setQueueLengths(
+        Object.fromEntries(summaries.map((item) => [item.id, item.length])),
+      );
+      setServices((current) => {
+        // Keep services created only in this browser; take server values for the rest.
+        const local = current.filter(
+          (service) => !summaries.some((item) => item.id === service.id),
+        );
+        return [
+          ...summaries.map(({ id, name, description, duration, priority, open }) => ({
+            id,
+            name,
+            description,
+            duration,
+            priority,
+            open,
+          })),
+          ...local,
+        ];
+      });
+      setLoadError(null);
+    } catch (error) {
+      setLoadError(errorMessage(error));
+    }
+  }, []);
+
+  const refreshActiveQueue = useCallback(async () => {
+    if (!activeServiceId) return;
+    try {
+      setActiveQueue((await queueApi.get(activeServiceId)).entries);
+    } catch {
+      // Services created only in the browser have no server queue yet.
+      setActiveQueue([]);
+    }
+  }, [activeServiceId]);
+
+  usePolling(refreshQueues, POLL_INTERVAL_MS);
+  usePolling(refreshActiveQueue, POLL_INTERVAL_MS);
+
+  /** Runs a queue API call, then reloads queue data; failures become notifications. */
+  async function runQueueAction(action: () => Promise<void>) {
+    setBusy(true);
+    try {
+      await action();
+    } catch (error) {
+      notify({
+        category: "system",
+        tone: "error",
+        title: "Queue action failed",
+        detail: errorMessage(error),
+        service: activeService?.name,
+      });
+    }
+    await Promise.all([refreshQueues(), refreshActiveQueue()]);
+    setBusy(false);
+  }
 
   function startCreate() {
     setEditingService(null);
@@ -190,7 +223,6 @@ function AdminWorkspace() {
         open: false,
       };
       setServices((current) => [...current, service]);
-      setQueues((current) => ({ ...current, [service.id]: [] }));
       setSelectedServiceId(service.id);
       notify({
         category: "service",
@@ -204,67 +236,63 @@ function AdminWorkspace() {
   }
 
   function toggleService(service: Service) {
-    setServices((current) =>
-      current.map((item) =>
-        item.id === service.id ? { ...item, open: !item.open } : item,
-      ),
-    );
-    notify({
-      category: "service",
-      tone: service.open ? "warning" : "success",
-      title: service.open ? "Queue closed" : "Queue opened",
-      detail: `${service.name} is ${service.open ? "closed" : "open"} to new arrivals.`,
-      service: service.name,
+    return runQueueAction(async () => {
+      const result = await queueApi.setOpen(service.id, !service.open);
+      setServices((current) =>
+        current.map((item) =>
+          item.id === service.id ? { ...item, open: result.service.open } : item,
+        ),
+      );
+      notify({
+        category: "service",
+        tone: service.open ? "warning" : "success",
+        title: service.open ? "Queue closed" : "Queue opened",
+        detail: `${service.name} is ${service.open ? "closed" : "open"} to new arrivals.`,
+        service: service.name,
+      });
     });
   }
 
-  function moveEntry(index: number, direction: -1 | 1) {
-    const target = index + direction;
-    if (!activeService || target < 0 || target >= activeQueue.length) return;
-    setQueues((current) => {
-      const reordered = [...(current[activeService.id] ?? [])];
-      [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
-      return { ...current, [activeService.id]: reordered };
-    });
-    notify({
-      category: "queue-update",
-      tone: "info",
-      title: "Queue order updated",
-      detail: `${activeService.name} order was changed.`,
-      service: activeService.name,
-    });
-  }
-
-  function removeEntry(entry: QueueEntry) {
+  function moveEntry(entry: QueueEntryView, direction: "up" | "down") {
     if (!activeService) return;
-    setQueues((current) => ({
-      ...current,
-      [activeService.id]: (current[activeService.id] ?? []).filter(
-        (item) => item.id !== entry.id,
-      ),
-    }));
-    notify({
-      category: "queue-update",
-      tone: "warning",
-      title: "User removed",
-      detail: `${entry.name} was removed from the queue.`,
-      service: activeService.name,
+    return runQueueAction(async () => {
+      const result = await queueApi.move(activeService.id, entry.id, direction);
+      setActiveQueue(result.entries);
+      notify({
+        category: "queue-update",
+        tone: "info",
+        title: "Queue order updated",
+        detail: `${entry.userName} moved ${direction} in ${activeService.name}.`,
+        service: activeService.name,
+      });
+    });
+  }
+
+  function removeEntry(entry: QueueEntryView) {
+    if (!activeService) return;
+    return runQueueAction(async () => {
+      await queueApi.leave(activeService.id, entry.id);
+      notify({
+        category: "queue-update",
+        tone: "warning",
+        title: "User removed",
+        detail: `${entry.userName} was removed from the queue.`,
+        service: activeService.name,
+      });
     });
   }
 
   function serveNext() {
-    if (!activeService || !activeQueue.length) return;
-    const served = activeQueue[0];
-    setQueues((current) => ({
-      ...current,
-      [activeService.id]: (current[activeService.id] ?? []).slice(1),
-    }));
-    notify({
-      category: "status-change",
-      tone: "success",
-      title: "User served",
-      detail: `${served.name} (${served.ticket}) was served.`,
-      service: activeService.name,
+    if (!activeService) return;
+    return runQueueAction(async () => {
+      const { record } = await queueApi.serveNext(activeService.id);
+      notify({
+        category: "status-change",
+        tone: "success",
+        title: "User served",
+        detail: `${record.userName} was served.`,
+        service: activeService.name,
+      });
     });
   }
 
@@ -298,6 +326,14 @@ function AdminWorkspace() {
       />
 
       <div className="space-y-8">
+        {loadError && (
+          <p
+            role="alert"
+            className="rounded-lg border border-error-500 bg-error-50 px-4 py-3 text-sm text-error-700 dark:bg-error-500/15 dark:text-error-400"
+          >
+            Queue data could not be loaded: {loadError}
+          </p>
+        )}
         <section id="overview" className="scroll-mt-28 space-y-5">
           <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard
@@ -370,7 +406,7 @@ function AdminWorkspace() {
                       </Badge>
                     </TableCell>
                     <TableCell className="font-medium">
-                      {queues[service.id]?.length ?? 0}
+                      {queueLengths[service.id] ?? 0}
                     </TableCell>
                     <TableCell>
                       <Badge color={service.open ? "success" : "light"} size="sm">
@@ -402,6 +438,7 @@ function AdminWorkspace() {
                         <Button
                           size="sm"
                           variant={service.open ? "danger" : "outline"}
+                          disabled={busy || !(service.id in queueLengths)}
                           onClick={() => toggleService(service)}
                         >
                           {service.open ? "Close queue" : "Open queue"}
@@ -478,7 +515,7 @@ function AdminWorkspace() {
           <Card>
             <CardHeader
               title="Queue management"
-              description="Reorder the waiting list or serve the next user."
+              description="Live waiting list from the queue API, ordered by priority, then arrival."
               action={
                 <div className="flex items-end gap-3">
                   <Select
@@ -497,7 +534,7 @@ function AdminWorkspace() {
                   <Button
                     size="sm"
                     onClick={serveNext}
-                    disabled={!activeQueue.length}
+                    disabled={busy || !activeQueue.length}
                   >
                     Serve next
                   </Button>
@@ -510,8 +547,9 @@ function AdminWorkspace() {
                   <TableRow>
                     <TableHead>Position</TableHead>
                     <TableHead>User</TableHead>
-                    <TableHead>Ticket</TableHead>
+                    <TableHead>Priority</TableHead>
                     <TableHead>Joined</TableHead>
+                    <TableHead>Est. wait</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -521,33 +559,42 @@ function AdminWorkspace() {
                       <TableCell className="font-semibold">{index + 1}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-3">
-                          <Avatar name={entry.name} />
-                          <span className="font-medium">{entry.name}</span>
+                          <Avatar name={entry.userName} />
+                          <span className="font-medium">{entry.userName}</span>
+                          {entry.status === "almost-ready" && (
+                            <Badge color="info" size="sm">
+                              Next
+                            </Badge>
+                          )}
                         </div>
                       </TableCell>
-                      <TableCell>{entry.ticket}</TableCell>
-                      <TableCell>{entry.joined}</TableCell>
+                      <TableCell className="capitalize">{entry.priority}</TableCell>
+                      <TableCell>
+                        <time dateTime={entry.joinedAt}>{formatJoined(entry.joinedAt)}</time>
+                      </TableCell>
+                      <TableCell>{entry.estimatedWaitMinutes} min</TableCell>
                       <TableCell>
                         <div className="flex justify-end gap-2">
                           <Button
                             size="sm"
                             variant="outline"
-                            disabled={index === 0}
-                            onClick={() => moveEntry(index, -1)}
+                            disabled={busy || index === 0}
+                            onClick={() => moveEntry(entry, "up")}
                           >
                             Move up
                           </Button>
                           <Button
                             size="sm"
                             variant="outline"
-                            disabled={index === activeQueue.length - 1}
-                            onClick={() => moveEntry(index, 1)}
+                            disabled={busy || index === activeQueue.length - 1}
+                            onClick={() => moveEntry(entry, "down")}
                           >
                             Move down
                           </Button>
                           <Button
                             size="sm"
                             variant="danger"
+                            disabled={busy}
                             onClick={() => removeEntry(entry)}
                           >
                             Remove
@@ -558,7 +605,7 @@ function AdminWorkspace() {
                   ))}
                   {!activeQueue.length && (
                     <TableRow>
-                      <TableCell colSpan={5} className="py-10 text-center">
+                      <TableCell colSpan={6} className="py-10 text-center">
                         <p className="font-medium">This queue is empty</p>
                         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
                           New arrivals will appear here.

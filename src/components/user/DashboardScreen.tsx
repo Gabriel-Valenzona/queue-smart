@@ -8,10 +8,13 @@ import Card, { CardBody, CardHeader } from "@/components/ui/Card";
 import EmptyState from "@/components/ui/EmptyState";
 import QueueSummary from "@/components/user/QueueSummary";
 import NotificationsSummary from "@/components/notifications/NotificationsSummary";
-import { demoServices } from "@/data/user-demo";
+import { useUserDemo } from "@/components/user/UserDemoProvider";
 
 export default function DashboardScreen() {
-  const activeServices = demoServices.filter((service) => service.open);
+  const { state } = useUserDemo();
+  const activeServices = (state.services ?? []).filter(
+    (service) => service.open,
+  );
 
   return (
     <>
@@ -53,11 +56,11 @@ export default function DashboardScreen() {
                         Expected duration: {service.duration} minutes
                       </p>
                       <p className="mt-2 text-sm">
-                        Estimated wait: {service.snapshots[0].waitMinutes}{" "}
-                        minutes
+                        Estimated wait: {service.estimatedWaitMinutes} minutes
                       </p>
                       <p className="mb-5 mt-1 text-xs text-gray-500 dark:text-gray-400">
-                        Demo estimate; actual wait times may vary.
+                        {service.length} waiting now; actual wait times may
+                        vary.
                       </p>
                       <ButtonLink
                         href={`/user/join-queue?service=${encodeURIComponent(service.id)}`}
@@ -71,6 +74,12 @@ export default function DashboardScreen() {
                     </Card>
                   ))}
                 </div>
+              </CardBody>
+            ) : !state.services ? (
+              <CardBody>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Loading services…
+                </p>
               </CardBody>
             ) : (
               <EmptyState
