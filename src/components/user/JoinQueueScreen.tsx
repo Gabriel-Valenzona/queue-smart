@@ -9,8 +9,7 @@ import Button from "@/components/ui/Button";
 import Card, { CardBody, CardHeader } from "@/components/ui/Card";
 import QueueSummary from "@/components/user/QueueSummary";
 import { useUserDemo } from "@/components/user/UserDemoProvider";
-import { demoServices } from "@/data/user-demo";
-import { getJoinError, isActiveParticipation } from "@/lib/user-demo";
+import { getJoinError } from "@/lib/user-demo";
 
 export default function JoinQueueScreen({
   initialServiceId = "",
@@ -22,10 +21,12 @@ export default function JoinQueueScreen({
   const { state, joinQueue } = useUserDemo();
   const [serviceId, setServiceId] = useState(initialServiceId);
   const [error, setError] = useState(initialError);
-  const service = demoServices.find((item) => item.id === serviceId);
-  const active = isActiveParticipation(state.current);
+  const [submitting, setSubmitting] = useState(false);
+  const services = state.services ?? [];
+  const service = services.find((item) => item.id === serviceId);
+  const active = !!state.current;
 
-  function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const nextError = getJoinError(state, serviceId);
     setError(nextError);
@@ -35,7 +36,9 @@ export default function JoinQueueScreen({
       )?.focus();
       return;
     }
-    joinQueue(serviceId);
+    setSubmitting(true);
+    await joinQueue(serviceId);
+    setSubmitting(false);
   }
 
   return (
@@ -52,7 +55,7 @@ export default function JoinQueueScreen({
         <Card>
           <CardHeader
             title="Select a service"
-            description="Explore the example services before joining a queue."
+            description="Live queue lengths and wait estimates from the queue service."
           />
           <CardBody>
             <form noValidate onSubmit={submit} className="space-y-6">
@@ -69,8 +72,10 @@ export default function JoinQueueScreen({
                   setError(undefined);
                 }}
               >
-                <option value="">Select a service</option>
-                {demoServices.map((item) => (
+                <option value="">
+                  {state.services ? "Select a service" : "Loading services…"}
+                </option>
+                {services.map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.name}
                     {item.open ? "" : " — Closed"}
@@ -122,11 +127,13 @@ export default function JoinQueueScreen({
                       </dt>
                       <dd className="mt-1 text-xl font-semibold">
                         {service.open
-                          ? `${service.snapshots[0].waitMinutes} minutes`
+                          ? `${service.estimatedWaitMinutes} minutes`
                           : "Unavailable"}
                       </dd>
                       <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                        Demo wait values are examples, not guarantees.
+                        {service.length} waiting now. Estimates assume{" "}
+                        {service.duration} minutes per person and are not
+                        guarantees.
                       </p>
                     </div>
                   </dl>
@@ -141,16 +148,19 @@ export default function JoinQueueScreen({
                 <Alert
                   variant="warning"
                   title="Queue closed"
-                  message="This example service is currently closed. Choose an open service to join."
+                  message="This service is currently closed. Choose an open service to join."
                 />
               ) : active ? (
                 <Alert
                   variant="info"
                   title="You are already in a queue"
-                  message="Leave your current queue or finish the demo participation before joining another service."
+                  message="Leave your current queue or wait to be served before joining another service."
                 />
               ) : null}
-              <Button type="submit" disabled={!!service && !service.open}>
+              <Button
+                type="submit"
+                disabled={submitting || (!!service && !service.open)}
+              >
                 Join queue
               </Button>
             </form>

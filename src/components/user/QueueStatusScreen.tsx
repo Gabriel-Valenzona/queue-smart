@@ -1,15 +1,21 @@
 "use client";
 
+import { useState } from "react";
 import PageHeader from "@/components/layout/PageHeader";
 import Button from "@/components/ui/Button";
 import Card, { CardBody, CardHeader } from "@/components/ui/Card";
 import QueueSummary from "@/components/user/QueueSummary";
 import { useUserDemo } from "@/components/user/UserDemoProvider";
-import { isActiveParticipation } from "@/lib/user-demo";
 
 export default function QueueStatusScreen() {
   const { state, advanceQueue, resetDemo } = useUserDemo();
-  const active = isActiveParticipation(state.current);
+  const [busy, setBusy] = useState(false);
+
+  async function run(action: () => Promise<void>) {
+    setBusy(true);
+    await action();
+    setBusy(false);
+  }
 
   return (
     <>
@@ -26,31 +32,24 @@ export default function QueueStatusScreen() {
         <Card>
           <CardHeader
             title="Demo controls"
-            description="Manually preview how queue updates appear in the frontend."
+            description="Simulate an administrator moving this queue along."
           />
           <CardBody className="space-y-5">
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Advance the example from waiting to almost ready, then served.
-              Position 1 means the next waiting user. These predefined positions
-              and estimated waits are simulated examples, not guarantees.
+              <strong>Serve next (as admin)</strong> serves whoever is at the front of your
+              queue, the same as the admin dashboard&apos;s Serve next button. Your position and
+              wait update from the queue API, and this page also refreshes every few seconds.
             </p>
             <div className="flex flex-wrap gap-3">
-              <Button
-                disabled={!active}
-                onClick={() => {
-                  if (state.current)
-                    advanceQueue(state.current.id, state.current.stage);
-                }}
-              >
-                Advance demo queue
+              <Button disabled={!state.current || busy} onClick={() => run(advanceQueue)}>
+                Serve next (as admin)
               </Button>
-              <Button variant="outline" onClick={resetDemo}>
+              <Button variant="outline" disabled={busy} onClick={() => run(resetDemo)}>
                 Reset demo
               </Button>
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              Reset restores the original example queue, participation history,
-              and notifications.
+              Reset restores the example queues on the server, your history, and notifications.
             </p>
           </CardBody>
         </Card>

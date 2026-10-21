@@ -15,7 +15,6 @@ import {
   TableRow,
 } from "@/components/ui/Table";
 import { useUserDemo } from "@/components/user/UserDemoProvider";
-import { demoServices } from "@/data/user-demo";
 import { formatDemoDate } from "@/lib/user-demo";
 
 export default function HistoryScreen() {
@@ -54,9 +53,11 @@ export default function HistoryScreen() {
                     </time>
                   </TableCell>
                   <TableCell className="font-medium">
-                    {demoServices.find(
+                    {state.services?.find(
                       (service) => service.id === record.serviceId,
-                    )?.name ?? "Unavailable service"}
+                    )?.name ??
+                      record.serviceName ??
+                      "Unavailable service"}
                   </TableCell>
                   <TableCell>
                     <Badge

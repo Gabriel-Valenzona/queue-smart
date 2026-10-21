@@ -3,45 +3,34 @@
 import { useState } from "react";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
-import type { DemoParticipation } from "@/types/user-demo";
 import { useUserDemo } from "./UserDemoProvider";
 
-export default function LeaveQueueDialog({
-  participation,
-  serviceName,
-}: {
-  participation: DemoParticipation;
-  serviceName: string;
-}) {
+export default function LeaveQueueDialog({ serviceName }: { serviceName: string }) {
   const { leaveQueue } = useUserDemo();
-  const [pending, setPending] = useState<DemoParticipation | null>(null);
+  const [open, setOpen] = useState(false);
+  const [leaving, setLeaving] = useState(false);
   return (
     <>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => setPending(participation)}
-      >
+      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
         Leave queue
       </Button>
-      <Modal
-        open={!!pending}
-        onClose={() => setPending(null)}
-        title="Leave this queue?"
-      >
+      <Modal open={open} onClose={() => setOpen(false)} title="Leave this queue?">
         <p className="text-sm leading-6 text-gray-500 dark:text-gray-400">
-          Leaving {serviceName} will cancel this example participation and add
-          it to your demo history.
+          Leaving {serviceName} will give up your place in line and add this visit to your
+          history as canceled.
         </p>
         <div className="mt-8 flex flex-wrap justify-end gap-3">
-          <Button variant="outline" onClick={() => setPending(null)}>
+          <Button variant="outline" onClick={() => setOpen(false)}>
             Keep waiting
           </Button>
           <Button
             variant="danger"
-            onClick={() => {
-              if (pending) leaveQueue(pending.id, pending.stage);
-              setPending(null);
+            disabled={leaving}
+            onClick={async () => {
+              setLeaving(true);
+              await leaveQueue();
+              setLeaving(false);
+              setOpen(false);
             }}
           >
             Confirm leave

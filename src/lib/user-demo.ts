@@ -1,32 +1,83 @@
-import { createPopulatedUserDemo, demoServices } from "@/data/user-demo";
 import type { NewNotification } from "@/data/notifications";
-import type {
-  DemoParticipation,
-  UserDemoAction,
-  UserDemoState,
-} from "@/types/user-demo";
+import type { CompletedParticipation, Participation } from "@/lib/api/queues";
+import type { DemoHistoryRecord, UserDemoState } from "@/types/user-demo";
 
-export function getQueueSnapshot(current: DemoParticipation | null) {
-  if (!current) return null;
-  return (
-    demoServices.find((service) => service.id === current.serviceId)?.snapshots[
-      current.stage
-    ] ?? null
-  );
+export function toHistoryRecord(
+  record: CompletedParticipation,
+  serviceName?: string,
+): DemoHistoryRecord {
+  return {
+    id: record.entryId,
+    serviceId: record.serviceId,
+    serviceName,
+    joinedAt: record.joinedAt,
+    completedAt: record.completedAt,
+    outcome: record.outcome,
+  };
 }
 
-export function isActiveParticipation(current: DemoParticipation | null) {
-  const snapshot = getQueueSnapshot(current);
-  return !!snapshot && snapshot.status !== "served";
+/**
+ * Compares the previous state with the latest API participation and works out
+ * what changed: the new state fields plus any in-app notifications to show.
+ */
+export function reconcileParticipation(
+  prev: UserDemoState,
+  next: Participation,
+): { patch: Partial<UserDemoState>; notifications: NewNotification[] } {
+  const before = prev.current;
+  const after = next.current;
+  const notifications: NewNotification[] = [];
+  const patch: Partial<UserDemoState> = { current: after };
+
+  if (before && !after) {
+    const record = next.lastCompleted?.entryId === before.id ? next.lastCompleted : null;
+    if (record && !prev.history.some((item) => item.id === record.entryId))
+      patch.history = [toHistoryRecord(record, before.service.name), ...prev.history];
+    if (record?.outcome === "served") {
+      patch.justServed = { serviceId: before.serviceId, serviceName: before.service.name };
+      notifications.push({
+        category: "status-change",
+        tone: "success",
+        title: "You’ve been served",
+        detail: `${before.service.name} has completed your visit.`,
+        service: before.service.name,
+        createdAt: record.completedAt,
+      });
+    } else {
+      notifications.push({
+        category: "status-change",
+        tone: "warning",
+        title: "Removed from queue",
+        detail: `You are no longer in the ${before.service.name} queue.`,
+        service: before.service.name,
+      });
+    }
+  } else if (before && after && before.id === after.id && before.position !== after.position) {
+    const nowNext = after.status === "almost-ready" && before.status !== "almost-ready";
+    notifications.push({
+      category: nowNext ? "status-change" : "queue-update",
+      tone: nowNext ? "warning" : "info",
+      title: nowNext ? "You’re almost ready" : "Queue updated",
+      detail: nowNext
+        ? `You’re next for ${after.service.name}. Please stay nearby.`
+        : `${after.service.name}: position ${after.position}, estimated wait ${after.estimatedWaitMinutes} minutes.`,
+      service: after.service.name,
+    });
+  }
+
+  return { patch, notifications };
 }
 
+/**
+ * Client-side pre-check so the form can explain problems before calling the
+ * API. The queue API re-validates and is the final authority.
+ */
 export function getJoinError(state: UserDemoState, serviceId: string) {
   if (!serviceId) return "Select a service to join its queue.";
-  const service = demoServices.find((item) => item.id === serviceId);
-  if (!service)
-    return "This service is not available. Select a listed service.";
+  const service = state.services?.find((item) => item.id === serviceId);
+  if (!service) return "This service is not available. Select a listed service.";
   if (!service.open) return "This queue is closed. Select an open service.";
-  if (isActiveParticipation(state.current))
+  if (state.current)
     return "You already have an active queue. Leave it or finish being served before joining another.";
 }
 
@@ -35,133 +86,4 @@ export function formatDemoDate(iso: string) {
     dateStyle: "medium",
     timeZone: "UTC",
   }).format(new Date(iso));
-}
-
-type UserDemoTransition = {
-  state: UserDemoState;
-  accepted: boolean;
-  notification?: NewNotification;
-};
-
-/** Pure A2 transition; the event handler sends accepted updates to the shared feed. */
-export function transitionUserDemo(
-  state: UserDemoState,
-  action: UserDemoAction,
-): UserDemoTransition {
-  if (action.type === "reset") {
-    const initial = createPopulatedUserDemo();
-    // A fresh identity prevents an old confirmation from affecting the reset demo.
-    return {
-      accepted: true,
-      state: {
-        ...initial,
-        current: initial.current ? { ...initial.current, id: action.id } : null,
-      },
-    };
-  }
-  if (action.type === "join") {
-    const error = getJoinError(state, action.serviceId);
-    if (error)
-      return {
-        accepted: false,
-        state: { ...state, feedback: { kind: "error", message: error } },
-      };
-    const service = demoServices.find((item) => item.id === action.serviceId)!;
-    const first = service.snapshots[0];
-    return {
-      accepted: true,
-      state: {
-        ...state,
-        current: {
-          id: action.id,
-          serviceId: service.id,
-          joinedAt: action.at,
-          stage: 0,
-        },
-        feedback: {
-          kind: "success",
-          message: `You joined the example queue for ${service.name}.`,
-        },
-      },
-      notification: {
-        category: "queue-update",
-        tone: "info",
-        title: "Demo · You’re in the queue",
-        detail: `${service.name}: position ${first.position}, estimated wait ${first.waitMinutes} minutes.`,
-        service: service.name,
-        time: "Demo · Just now",
-        createdAt: action.at,
-      },
-    };
-  }
-  const current = state.current;
-  if (
-    !current ||
-    current.id !== action.participationId ||
-    current.stage !== action.expectedStage ||
-    !isActiveParticipation(current)
-  )
-    return { state, accepted: false };
-  const service = demoServices.find((item) => item.id === current.serviceId)!;
-  const nextSnapshot = service.snapshots[current.stage + 1];
-  if (action.type === "advance" && !nextSnapshot)
-    return { state, accepted: false };
-  const completed = action.type === "leave" || nextSnapshot.status === "served";
-  const outcome = action.type === "leave" ? "canceled" : "served";
-  const title =
-    action.type === "leave"
-      ? "Queue canceled"
-      : nextSnapshot.status === "served"
-        ? "You’ve been served"
-        : nextSnapshot.status === "almost-ready"
-          ? "You’re almost ready"
-          : "Queue updated";
-  const message =
-    action.type === "leave"
-      ? `You left the example queue for ${service.name}.`
-      : nextSnapshot.status === "served"
-        ? `${service.name} has completed your example participation.`
-        : `${service.name}: position ${nextSnapshot.position}, estimated wait ${nextSnapshot.waitMinutes} minutes.`;
-  return {
-    accepted: true,
-    state: {
-      ...state,
-      current:
-        action.type === "leave"
-          ? null
-          : { ...current, stage: current.stage + 1 },
-      history: completed
-        ? [
-            {
-              id: current.id,
-              serviceId: current.serviceId,
-              joinedAt: current.joinedAt,
-              completedAt: action.at,
-              outcome,
-            },
-            ...state.history,
-          ]
-        : state.history,
-      feedback: { kind: "success", message },
-    },
-    notification: {
-      category:
-        completed || nextSnapshot.status === "almost-ready"
-          ? "status-change"
-          : "queue-update",
-      tone:
-        action.type === "leave"
-          ? "warning"
-          : nextSnapshot.status === "served"
-            ? "success"
-            : nextSnapshot.status === "almost-ready"
-              ? "warning"
-              : "info",
-      title: `Demo · ${title}`,
-      detail: message,
-      service: service.name,
-      time: "Demo · Just now",
-      createdAt: action.at,
-    },
-  };
 }

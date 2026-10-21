@@ -45,8 +45,8 @@ export default function UserWorkspace({ children }: { children: ReactNode }) {
       <div className="mb-6">
         <Alert
           variant="info"
-          title="Frontend demo"
-          message="All account, service, queue, history, and notification data is simulated. Changes reset on refresh."
+          title="Demo account"
+          message="Queue positions and wait times come from the in-memory queue API and are shared with the admin dashboard. The account, history, and notifications are still simulated. Use Reset demo on Queue status to restore the examples."
         />
       </div>
       {state.feedback && (
@@ -54,7 +54,7 @@ export default function UserWorkspace({ children }: { children: ReactNode }) {
           <Alert
             variant={state.feedback.kind}
             title={
-              state.feedback.kind === "error" ? "Unable to join" : "Demo update"
+              state.feedback.kind === "error" ? "Queue action failed" : "Queue update"
             }
             message={state.feedback.message}
           />
