@@ -13,6 +13,8 @@ import Bell from "@/components/icons/Bell";
 import { demoAccount } from "@/data/user-demo";
 import { useUserDemo } from "./UserDemoProvider";
 
+import { useCurrentUser } from "@/lib/auth/client-auth";
+
 const navigation: NavItem[] = [
   { label: "Dashboard", href: "/user", icon: <Grid /> },
   { label: "Join queue", href: "/user/join-queue", icon: <Plus /> },
@@ -23,6 +25,11 @@ const navigation: NavItem[] = [
 
 export default function UserWorkspace({ children }: { children: ReactNode }) {
   const { state } = useUserDemo();
+  const { user } = useCurrentUser();
+
+  const accountName = user ? user.name : `${demoAccount.name} · Demo`;
+  const accountEmail = user ? user.email : demoAccount.email;
+
   return (
     <AppShell
       navigation={navigation}
@@ -31,12 +38,15 @@ export default function UserWorkspace({ children }: { children: ReactNode }) {
         <>
           <NotificationBell viewAllHref="/user/notifications" />
           <AccountMenu
-            name={`${demoAccount.name} · Demo`}
-            email={demoAccount.email}
+            name={accountName}
+            email={accountEmail}
             links={[
-              { label: "Demo account dashboard", href: "/user" },
+              { label: "User dashboard", href: "/user" },
               { label: "History", href: "/user/history" },
-              { label: "Back to login", href: "/login" },
+              ...(user?.role === "admin"
+                ? [{ label: "Switch to Admin workspace", href: "/admin" }]
+                : []),
+              { label: "Log out", href: "/login" },
             ]}
           />
         </>

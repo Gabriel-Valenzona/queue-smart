@@ -31,6 +31,7 @@ import Avatar from "@/components/ui/Avatar";
 import { sampleAdminNotifications } from "@/data/notifications";
 import { ApiError, queueApi, type QueueEntryView } from "@/lib/api/queues";
 import { usePolling } from "@/lib/usePolling";
+import { useCurrentUser } from "@/lib/auth/client-auth";
 
 /** How often the admin view re-checks the queue API for user joins and leaves. */
 const POLL_INTERVAL_MS = 4000;
@@ -296,6 +297,10 @@ function AdminWorkspace() {
     });
   }
 
+  const { user } = useCurrentUser();
+  const adminName = user ? user.name : "Administrator";
+  const adminEmail = user ? user.email : "admin@queuesmart.com";
+
   return (
     <AppShell
       navigation={navigation}
@@ -304,11 +309,13 @@ function AdminWorkspace() {
         <>
           <NotificationBell viewAllHref="/notifications" />
           <AccountMenu
-            name="Alex Morgan"
-            email="alex@example.com"
+            name={adminName}
+            email={adminEmail}
             links={[
-              { label: "User home", href: "/" },
-              { label: "Log in", href: "/login" },
+              { label: "Admin overview", href: "/admin#overview" },
+              { label: "Switch to User workspace", href: "/user" },
+              { label: "Public home", href: "/" },
+              { label: "Log out", href: "/login" },
             ]}
           />
         </>
