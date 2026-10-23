@@ -109,6 +109,7 @@ describe("reconcileParticipation", () => {
       lastCompleted: {
         entryId: "entry-1",
         serviceId: service.id,
+        serviceName: service.name,
         userId: "alex-morgan",
         userName: "Alex Morgan",
         joinedAt: "2026-10-01T10:00:00Z",

@@ -60,6 +60,7 @@ function complete(
   const record: CompletedParticipation = {
     entryId: entry.id,
     serviceId: entry.serviceId,
+    serviceName: findService(store, entry.serviceId).name,
     userId: entry.userId,
     userName: entry.userName,
     joinedAt: entry.joinedAt,

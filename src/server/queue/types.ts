@@ -28,6 +28,8 @@ export type ParticipationOutcome = "served" | "canceled";
 export type CompletedParticipation = {
   entryId: string;
   serviceId: string;
+  /** Service name when this visit was served or canceled. */
+  serviceName: string;
   userId: string;
   userName: string;
   joinedAt: string;
