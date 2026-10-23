@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import AppShell, { type NavItem } from "@/components/layout/AppShell";
 import PageHeader from "@/components/layout/PageHeader";
 import { AccountMenu } from "@/components/layout/HeaderMenus";
@@ -11,7 +11,7 @@ import NotificationFeed from "@/components/notifications/NotificationFeed";
 import Button from "@/components/ui/Button";
 import Card, { CardBody, CardHeader, StatCard } from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
-import Modal from "@/components/ui/Modal";
+import ServiceEditor from "@/components/services/ServiceEditor";
 import {
   Table,
   TableBody,
@@ -20,7 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/Table";
-import { Input, Select, TextArea } from "@/components/forms/Fields";
+import { Select } from "@/components/forms/Fields";
 import Grid from "@/components/icons/Grid";
 import List from "@/components/icons/List";
 import Group from "@/components/icons/Group";
@@ -29,25 +29,19 @@ import Clock from "@/components/icons/Clock";
 import Plus from "@/components/icons/Plus";
 import Avatar from "@/components/ui/Avatar";
 import { sampleAdminNotifications } from "@/data/notifications";
-import { ApiError, queueApi, type QueueEntryView } from "@/lib/api/queues";
+import {
+  ApiError,
+  queueApi,
+  type QueueEntryView,
+  type QueueService,
+} from "@/lib/api/queues";
 import { usePolling } from "@/lib/usePolling";
 import { useCurrentUser } from "@/lib/auth/client-auth";
 
 /** How often the admin view re-checks the queue API for user joins and leaves. */
 const POLL_INTERVAL_MS = 4000;
 
-type Service = {
-  id: string;
-  name: string;
-  description: string;
-  duration: number;
-  priority: "low" | "medium" | "high";
-  open: boolean;
-};
-
-type ServiceDraft = Omit<Service, "id" | "open" | "duration"> & {
-  duration: string;
-};
+type Service = QueueService;
 
 const navigation: NavItem[] = [
   { label: "Overview", href: "/admin#overview", icon: <Grid /> },
@@ -57,23 +51,18 @@ const navigation: NavItem[] = [
 ];
 
 function formatJoined(iso: string) {
-  return new Intl.DateTimeFormat("en-US", { timeStyle: "short" }).format(new Date(iso));
+  return new Intl.DateTimeFormat("en-US", { timeStyle: "short" }).format(
+    new Date(iso),
+  );
 }
 
 function errorMessage(error: unknown) {
-  return error instanceof ApiError ? error.message : "The queue service could not be reached.";
+  return error instanceof ApiError
+    ? error.message
+    : "The queue service could not be reached.";
 }
 
-const emptyDraft: ServiceDraft = {
-  name: "",
-  description: "",
-  duration: "",
-  priority: "medium",
-};
-
 function AdminWorkspace() {
-  // Services load from the queue API; create/edit stays local until the
-  // service management API exists.
   const [services, setServices] = useState<Service[]>([]);
   const [queueLengths, setQueueLengths] = useState<Record<string, number>>({});
   const [activeQueue, setActiveQueue] = useState<QueueEntryView[]>([]);
@@ -82,8 +71,8 @@ function AdminWorkspace() {
   const [selectedServiceId, setSelectedServiceId] = useState("");
   const [editingService, setEditingService] = useState<Service | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
-  const [draft, setDraft] = useState<ServiceDraft>(emptyDraft);
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const listRequest = useRef(0);
+  const queueRequest = useRef(0);
   const { notify, unreadCount } = useNotifications();
 
   const activeService =
@@ -95,42 +84,45 @@ function AdminWorkspace() {
   );
   const openCount = services.filter((service) => service.open).length;
 
+  useEffect(
+    () => () => {
+      queueRequest.current++;
+    },
+    [activeServiceId],
+  );
+  useEffect(
+    () => () => {
+      listRequest.current++;
+    },
+    [],
+  );
+
   const refreshQueues = useCallback(async () => {
+    const started = ++listRequest.current;
     try {
       const summaries = await queueApi.list();
+      if (started !== listRequest.current) return;
       setQueueLengths(
         Object.fromEntries(summaries.map((item) => [item.id, item.length])),
       );
-      setServices((current) => {
-        // Keep services created only in this browser; take server values for the rest.
-        const local = current.filter(
-          (service) => !summaries.some((item) => item.id === service.id),
-        );
-        return [
-          ...summaries.map(({ id, name, description, duration, priority, open }) => ({
-            id,
-            name,
-            description,
-            duration,
-            priority,
-            open,
-          })),
-          ...local,
-        ];
-      });
+      setServices(summaries);
       setLoadError(null);
     } catch (error) {
-      setLoadError(errorMessage(error));
+      if (started === listRequest.current) setLoadError(errorMessage(error));
     }
   }, []);
 
   const refreshActiveQueue = useCallback(async () => {
     if (!activeServiceId) return;
+    const started = ++queueRequest.current;
     try {
-      setActiveQueue((await queueApi.get(activeServiceId)).entries);
-    } catch {
-      // Services created only in the browser have no server queue yet.
-      setActiveQueue([]);
+      const { entries } = await queueApi.get(activeServiceId);
+      if (started === queueRequest.current) setActiveQueue(entries);
+    } catch (error) {
+      if (started === queueRequest.current) {
+        setActiveQueue([]);
+        setLoadError(errorMessage(error));
+      }
     }
   }, [activeServiceId]);
 
@@ -139,6 +131,8 @@ function AdminWorkspace() {
 
   /** Runs a queue API call, then reloads queue data; failures become notifications. */
   async function runQueueAction(action: () => Promise<void>) {
+    listRequest.current++;
+    queueRequest.current++;
     setBusy(true);
     try {
       await action();
@@ -157,83 +151,29 @@ function AdminWorkspace() {
 
   function startCreate() {
     setEditingService(null);
-    setDraft(emptyDraft);
-    setErrors({});
     setModalOpen(true);
   }
 
   function startEdit(service: Service) {
     setEditingService(service);
-    setDraft({
-      name: service.name,
-      description: service.description,
-      duration: String(service.duration),
-      priority: service.priority,
-    });
-    setErrors({});
     setModalOpen(true);
   }
 
-  function saveService(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const nextErrors: Record<string, string> = {};
-    if (!draft.name.trim()) nextErrors.name = "Enter a service name.";
-    else if (draft.name.trim().length > 100)
-      nextErrors.name = "Use 100 characters or fewer.";
-    if (!draft.description.trim())
-      nextErrors.description = "Describe this service.";
-    if (
-      !draft.duration ||
-      !Number.isFinite(Number(draft.duration)) ||
-      Number(draft.duration) <= 0
-    )
-      nextErrors.duration = "Enter a duration greater than zero.";
-    if (!["low", "medium", "high"].includes(draft.priority))
-      nextErrors.priority = "Select a priority level.";
-    setErrors(nextErrors);
-    if (Object.keys(nextErrors).length) return;
-
-    if (editingService) {
-      setServices((current) =>
-        current.map((service) =>
-          service.id === editingService.id
-            ? {
-                ...service,
-                ...draft,
-                name: draft.name.trim(),
-                description: draft.description.trim(),
-                duration: Number(draft.duration),
-              }
-            : service,
-        ),
-      );
-      notify({
-        category: "service",
-        tone: "success",
-        title: "Service updated",
-        detail: `${draft.name.trim()} was updated.`,
-        service: draft.name.trim(),
-      });
+  function serviceSaved(saved: Service, operation: "create" | "update") {
+    listRequest.current++;
+    queueRequest.current++;
+    setServices((current) =>
+      operation === "create"
+        ? [...current, saved]
+        : current.map((service) => (service.id === saved.id ? saved : service)),
+    );
+    if (operation === "create") {
+      setSelectedServiceId(saved.id);
+      setActiveQueue([]);
     } else {
-      const service: Service = {
-        ...draft,
-        id: `service-${Date.now()}`,
-        name: draft.name.trim(),
-        description: draft.description.trim(),
-        duration: Number(draft.duration),
-        open: false,
-      };
-      setServices((current) => [...current, service]);
-      setSelectedServiceId(service.id);
-      notify({
-        category: "service",
-        tone: "success",
-        title: "Service created",
-        detail: `${service.name} is ready to configure.`,
-        service: service.name,
-      });
+      void refreshActiveQueue();
     }
-    setModalOpen(false);
+    void refreshQueues();
   }
 
   function toggleService(service: Service) {
@@ -241,7 +181,9 @@ function AdminWorkspace() {
       const result = await queueApi.setOpen(service.id, !service.open);
       setServices((current) =>
         current.map((item) =>
-          item.id === service.id ? { ...item, open: result.service.open } : item,
+          item.id === service.id
+            ? { ...item, open: result.service.open }
+            : item,
         ),
       );
       notify({
@@ -416,7 +358,10 @@ function AdminWorkspace() {
                       {queueLengths[service.id] ?? 0}
                     </TableCell>
                     <TableCell>
-                      <Badge color={service.open ? "success" : "light"} size="sm">
+                      <Badge
+                        color={service.open ? "success" : "light"}
+                        size="sm"
+                      >
                         {service.open ? "Open" : "Closed"}
                       </Badge>
                     </TableCell>
@@ -456,7 +401,10 @@ function AdminWorkspace() {
                 ))}
                 {!services.length && (
                   <TableRow>
-                    <TableCell colSpan={5} className="py-10 text-center text-gray-500">
+                    <TableCell
+                      colSpan={5}
+                      className="py-10 text-center text-gray-500"
+                    >
                       No services yet. Add a service to get started.
                     </TableCell>
                   </TableRow>
@@ -487,7 +435,10 @@ function AdminWorkspace() {
                     <div>
                       <div className="flex items-start justify-between gap-3">
                         <h3 className="font-semibold">{service.name}</h3>
-                        <Badge color={service.open ? "success" : "light"} size="sm">
+                        <Badge
+                          color={service.open ? "success" : "light"}
+                          size="sm"
+                        >
                           {service.open ? "Open" : "Closed"}
                         </Badge>
                       </div>
@@ -529,7 +480,9 @@ function AdminWorkspace() {
                     label="Selected service"
                     aria-label="Selected service"
                     value={activeService?.id ?? ""}
-                    onChange={(event) => setSelectedServiceId(event.target.value)}
+                    onChange={(event) =>
+                      setSelectedServiceId(event.target.value)
+                    }
                     className="min-w-48"
                   >
                     {services.map((service) => (
@@ -563,7 +516,9 @@ function AdminWorkspace() {
                 <TableBody>
                   {activeQueue.map((entry, index) => (
                     <TableRow key={entry.id}>
-                      <TableCell className="font-semibold">{index + 1}</TableCell>
+                      <TableCell className="font-semibold">
+                        {index + 1}
+                      </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-3">
                           <Avatar name={entry.userName} />
@@ -575,9 +530,13 @@ function AdminWorkspace() {
                           )}
                         </div>
                       </TableCell>
-                      <TableCell className="capitalize">{entry.priority}</TableCell>
+                      <TableCell className="capitalize">
+                        {entry.priority}
+                      </TableCell>
                       <TableCell>
-                        <time dateTime={entry.joinedAt}>{formatJoined(entry.joinedAt)}</time>
+                        <time dateTime={entry.joinedAt}>
+                          {formatJoined(entry.joinedAt)}
+                        </time>
                       </TableCell>
                       <TableCell>{entry.estimatedWaitMinutes} min</TableCell>
                       <TableCell>
@@ -641,88 +600,12 @@ function AdminWorkspace() {
         </section>
       </div>
 
-      <Modal
+      <ServiceEditor
         open={modalOpen}
+        service={editingService}
         onClose={() => setModalOpen(false)}
-        title={editingService ? "Edit service" : "Create service"}
-      >
-        <form noValidate onSubmit={saveService} className="space-y-5">
-          <Input
-            label="Service name"
-            name="name"
-            placeholder="e.g. Student services"
-            value={draft.name}
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, name: event.target.value }))
-            }
-            maxLength={100}
-            required
-            error={errors.name}
-            hint={`${draft.name.length}/100 characters`}
-          />
-          <TextArea
-            label="Description"
-            name="description"
-            placeholder="What can users expect from this service?"
-            value={draft.description}
-            onChange={(event) =>
-              setDraft((current) => ({
-                ...current,
-                description: event.target.value,
-              }))
-            }
-            required
-            error={errors.description}
-          />
-          <div className="grid gap-5 sm:grid-cols-2">
-            <Input
-              label="Expected duration (minutes)"
-              name="duration"
-              type="number"
-              min="1"
-              step="1"
-              placeholder="10"
-              value={draft.duration}
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  duration: event.target.value,
-                }))
-              }
-              required
-              error={errors.duration}
-            />
-            <Select
-              label="Priority level"
-              name="priority"
-              value={draft.priority}
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  priority: event.target.value as ServiceDraft["priority"],
-                }))
-              }
-              required
-              error={errors.priority}
-            >
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-            </Select>
-          </div>
-          <div className="flex justify-end gap-3 pt-2">
-            <Button
-              variant="outline"
-              onClick={() => setModalOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button type="submit">
-              {editingService ? "Save changes" : "Create service"}
-            </Button>
-          </div>
-        </form>
-      </Modal>
+        onSaved={serviceSaved}
+      />
     </AppShell>
   );
 }
