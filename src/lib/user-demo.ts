@@ -1,20 +1,6 @@
 import type { NewNotification } from "@/data/notifications";
-import type { CompletedParticipation, Participation } from "@/lib/api/queues";
-import type { DemoHistoryRecord, UserDemoState } from "@/types/user-demo";
-
-export function toHistoryRecord(
-  record: CompletedParticipation,
-  serviceName?: string,
-): DemoHistoryRecord {
-  return {
-    id: record.entryId,
-    serviceId: record.serviceId,
-    serviceName,
-    joinedAt: record.joinedAt,
-    completedAt: record.completedAt,
-    outcome: record.outcome,
-  };
-}
+import type { Participation } from "@/lib/api/queues";
+import type { UserDemoState } from "@/types/user-demo";
 
 /**
  * Compares the previous state with the latest API participation and works out
@@ -30,11 +16,13 @@ export function reconcileParticipation(
   const patch: Partial<UserDemoState> = { current: after };
 
   if (before && !after) {
-    const record = next.lastCompleted?.entryId === before.id ? next.lastCompleted : null;
-    if (record && !prev.history.some((item) => item.id === record.entryId))
-      patch.history = [toHistoryRecord(record, before.service.name), ...prev.history];
+    const record =
+      next.lastCompleted?.entryId === before.id ? next.lastCompleted : null;
     if (record?.outcome === "served") {
-      patch.justServed = { serviceId: before.serviceId, serviceName: before.service.name };
+      patch.justServed = {
+        serviceId: before.serviceId,
+        serviceName: record.serviceName,
+      };
       notifications.push({
         category: "status-change",
         tone: "success",
@@ -52,8 +40,14 @@ export function reconcileParticipation(
         service: before.service.name,
       });
     }
-  } else if (before && after && before.id === after.id && before.position !== after.position) {
-    const nowNext = after.status === "almost-ready" && before.status !== "almost-ready";
+  } else if (
+    before &&
+    after &&
+    before.id === after.id &&
+    before.position !== after.position
+  ) {
+    const nowNext =
+      after.status === "almost-ready" && before.status !== "almost-ready";
     notifications.push({
       category: nowNext ? "status-change" : "queue-update",
       tone: nowNext ? "warning" : "info",
@@ -75,7 +69,8 @@ export function reconcileParticipation(
 export function getJoinError(state: UserDemoState, serviceId: string) {
   if (!serviceId) return "Select a service to join its queue.";
   const service = state.services?.find((item) => item.id === serviceId);
-  if (!service) return "This service is not available. Select a listed service.";
+  if (!service)
+    return "This service is not available. Select a listed service.";
   if (!service.open) return "This queue is closed. Select an open service.";
   if (state.current)
     return "You already have an active queue. Leave it or finish being served before joining another.";

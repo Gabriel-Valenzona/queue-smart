@@ -1,49 +1,12 @@
-import type { DemoHistoryRecord, UserDemoState } from "@/types/user-demo";
+import type { UserDemoState } from "@/types/user-demo";
 import type { Notification } from "@/data/notifications";
 
-/** Fixed demo account until the authentication module supplies a real user. */
-export const demoAccount = {
-  id: "alex-morgan",
-  name: "Alex Morgan",
-  email: "alex@example.com",
-};
-
-function exampleHistory(): DemoHistoryRecord[] {
-  return [
-    {
-      id: "example-history-1",
-      serviceId: "student-services",
-      serviceName: "Student services",
-      joinedAt: "2026-09-28T10:00:00Z",
-      completedAt: "2026-09-28T10:20:00Z",
-      outcome: "served",
-    },
-    {
-      id: "example-history-2",
-      serviceId: "technology-support",
-      serviceName: "Technology support",
-      joinedAt: "2026-09-24T14:00:00Z",
-      completedAt: "2026-09-24T14:05:00Z",
-      outcome: "canceled",
-    },
-    {
-      id: "example-history-3",
-      serviceId: "academic-advising",
-      serviceName: "Academic advising",
-      joinedAt: "2026-09-19T09:00:00Z",
-      completedAt: "2026-09-19T09:25:00Z",
-      outcome: "served",
-    },
-  ];
-}
-
-/** Queue data is loaded from the API; history stays an in-browser example. */
+/** Queue data loads from the API; History has its own authenticated API loader. */
 export function createInitialUserDemo(): UserDemoState {
   return {
     services: null,
     current: null,
     justServed: null,
-    history: exampleHistory(),
     feedback: null,
     loadError: null,
   };

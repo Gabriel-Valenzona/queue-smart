@@ -8,7 +8,7 @@ import QueueSummary from "@/components/user/QueueSummary";
 import { useUserDemo } from "@/components/user/UserDemoProvider";
 
 export default function QueueStatusScreen() {
-  const { state, advanceQueue, resetDemo } = useUserDemo();
+  const { user, state, advanceQueue, resetDemo } = useUserDemo();
   const [busy, setBusy] = useState(false);
 
   async function run(action: () => Promise<void>) {
@@ -29,30 +29,41 @@ export default function QueueStatusScreen() {
       />
       <div className="space-y-6">
         <QueueSummary />
-        <Card>
-          <CardHeader
-            title="Demo controls"
-            description="Simulate an administrator moving this queue along."
-          />
-          <CardBody className="space-y-5">
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              <strong>Serve next (as admin)</strong> serves whoever is at the front of your
-              queue, the same as the admin dashboard&apos;s Serve next button. Your position and
-              wait update from the queue API, and this page also refreshes every few seconds.
-            </p>
-            <div className="flex flex-wrap gap-3">
-              <Button disabled={!state.current || busy} onClick={() => run(advanceQueue)}>
-                Serve next (as admin)
-              </Button>
-              <Button variant="outline" disabled={busy} onClick={() => run(resetDemo)}>
-                Reset demo
-              </Button>
-            </div>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              Reset restores the example queues on the server, your history, and notifications.
-            </p>
-          </CardBody>
-        </Card>
+        {user.role === "admin" && (
+          <Card>
+            <CardHeader
+              title="Demo controls"
+              description="Simulate an administrator moving this queue along."
+            />
+            <CardBody className="space-y-5">
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                <strong>Serve next (as admin)</strong> serves whoever is at the
+                front of your queue, the same as the admin dashboard&apos;s
+                Serve next button. Your position and wait update from the queue
+                API, and this page also refreshes every few seconds.
+              </p>
+              <div className="flex flex-wrap gap-3">
+                <Button
+                  disabled={!state.current || busy}
+                  onClick={() => run(advanceQueue)}
+                >
+                  Serve next (as admin)
+                </Button>
+                <Button
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => run(resetDemo)}
+                >
+                  Reset demo
+                </Button>
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Reset restores the example queues on the server, your history,
+                and notifications.
+              </p>
+            </CardBody>
+          </Card>
+        )}
       </div>
     </>
   );

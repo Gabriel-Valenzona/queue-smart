@@ -3,8 +3,9 @@
 import Clock from "@/components/icons/Clock";
 import PageHeader from "@/components/layout/PageHeader";
 import Badge from "@/components/ui/Badge";
-import { ButtonLink } from "@/components/ui/Button";
-import Card, { CardHeader } from "@/components/ui/Card";
+import Button, { ButtonLink } from "@/components/ui/Button";
+import Card, { CardBody, CardHeader } from "@/components/ui/Card";
+import Alert from "@/components/ui/Alert";
 import EmptyState from "@/components/ui/EmptyState";
 import {
   Table,
@@ -14,14 +15,23 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/Table";
-import { useUserDemo } from "@/components/user/UserDemoProvider";
+import { useUserDemo } from "./UserDemoProvider";
+import { useHistory } from "./useHistory";
 import { formatDemoDate } from "@/lib/user-demo";
 
 export default function HistoryScreen() {
-  const { state } = useUserDemo();
-  const history = [...state.history].sort((a, b) =>
-    b.completedAt.localeCompare(a.completedAt),
-  );
+  const { user } = useUserDemo();
+  return <AccountHistory key={user.id} />;
+}
+
+function AccountHistory() {
+  const {
+    records: history,
+    error,
+    needsSignIn,
+    retry,
+    retrying,
+  } = useHistory();
 
   return (
     <>
@@ -32,11 +42,34 @@ export default function HistoryScreen() {
       <Card>
         <CardHeader
           title="Past queues"
-          description="Example records and completed demo interactions, newest first. Dates are displayed in UTC."
+          description="Completed visits, newest first. Dates are displayed in UTC."
         />
-        {history.length ? (
+        {error && (
+          <CardBody>
+            <Alert
+              variant="error"
+              title="History unavailable"
+              message={error}
+            />
+            <div className="mt-4">
+              {needsSignIn ? (
+                <ButtonLink href="/login">Sign in</ButtonLink>
+              ) : (
+                <Button variant="outline" onClick={retry} disabled={retrying}>
+                  {retrying ? "Retrying…" : "Retry"}
+                </Button>
+              )}
+            </div>
+          </CardBody>
+        )}
+        {!history && !error ? (
+          <CardBody>
+            <p role="status">Loading history…</p>
+          </CardBody>
+        ) : null}
+        {history && history.length > 0 ? (
           <Table>
-            <caption className="sr-only">Example participation history</caption>
+            <caption className="sr-only">Participation history</caption>
             <TableHeader>
               <TableRow>
                 <TableHead>Date joined</TableHead>
@@ -46,18 +79,14 @@ export default function HistoryScreen() {
             </TableHeader>
             <TableBody>
               {history.map((record) => (
-                <TableRow key={record.id}>
+                <TableRow key={record.entryId}>
                   <TableCell className="whitespace-nowrap text-gray-500 dark:text-gray-400">
                     <time dateTime={record.joinedAt}>
                       {formatDemoDate(record.joinedAt)}
                     </time>
                   </TableCell>
                   <TableCell className="font-medium">
-                    {state.services?.find(
-                      (service) => service.id === record.serviceId,
-                    )?.name ??
-                      record.serviceName ??
-                      "Unavailable service"}
+                    {record.serviceName}
                   </TableCell>
                   <TableCell>
                     <Badge
@@ -70,16 +99,16 @@ export default function HistoryScreen() {
               ))}
             </TableBody>
           </Table>
-        ) : (
+        ) : history && !error ? (
           <EmptyState
             title="No past queues"
-            description="Completed or canceled demo queue participation will appear here."
+            description="Completed or canceled queue participation will appear here."
             icon={<Clock className="size-6" />}
             action={
               <ButtonLink href="/user/join-queue">Join a queue</ButtonLink>
             }
           />
-        )}
+        ) : null}
       </Card>
     </>
   );

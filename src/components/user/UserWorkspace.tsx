@@ -10,10 +10,7 @@ import Plus from "@/components/icons/Plus";
 import Clock from "@/components/icons/Clock";
 import Table from "@/components/icons/Table";
 import Bell from "@/components/icons/Bell";
-import { demoAccount } from "@/data/user-demo";
 import { useUserDemo } from "./UserDemoProvider";
-
-import { useCurrentUser } from "@/lib/auth/client-auth";
 
 const navigation: NavItem[] = [
   { label: "Dashboard", href: "/user", icon: <Grid /> },
@@ -24,11 +21,7 @@ const navigation: NavItem[] = [
 ];
 
 export default function UserWorkspace({ children }: { children: ReactNode }) {
-  const { state } = useUserDemo();
-  const { user } = useCurrentUser();
-
-  const accountName = user ? user.name : `${demoAccount.name} · Demo`;
-  const accountEmail = user ? user.email : demoAccount.email;
+  const { state, user } = useUserDemo();
 
   return (
     <AppShell
@@ -38,8 +31,8 @@ export default function UserWorkspace({ children }: { children: ReactNode }) {
         <>
           <NotificationBell viewAllHref="/user/notifications" />
           <AccountMenu
-            name={accountName}
-            email={accountEmail}
+            name={user.name}
+            email={user.email}
             links={[
               { label: "User dashboard", href: "/user" },
               { label: "History", href: "/user/history" },
@@ -55,8 +48,8 @@ export default function UserWorkspace({ children }: { children: ReactNode }) {
       <div className="mb-6">
         <Alert
           variant="info"
-          title="Demo account"
-          message="Queue positions and wait times come from the in-memory queue API and are shared with the admin dashboard. The account, history, and notifications are still simulated. Use Reset demo on Queue status to restore the examples."
+          title="Assignment 3 workspace"
+          message="Your queues and history come from the server and reset when it restarts. Notifications include example messages and in-app queue updates."
         />
       </div>
       {state.feedback && (
@@ -64,7 +57,9 @@ export default function UserWorkspace({ children }: { children: ReactNode }) {
           <Alert
             variant={state.feedback.kind}
             title={
-              state.feedback.kind === "error" ? "Queue action failed" : "Queue update"
+              state.feedback.kind === "error"
+                ? "Queue action failed"
+                : "Queue update"
             }
             message={state.feedback.message}
           />

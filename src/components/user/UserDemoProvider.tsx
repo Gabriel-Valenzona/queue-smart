@@ -4,6 +4,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useRef,
   useState,
   type ReactNode,
@@ -12,18 +13,24 @@ import { useRouter } from "next/navigation";
 import {
   createInitialUserDemo,
   createUserDemoNotifications,
-  demoAccount,
 } from "@/data/user-demo";
 import { ApiError, queueApi } from "@/lib/api/queues";
-import { getJoinError, reconcileParticipation, toHistoryRecord } from "@/lib/user-demo";
+import { getJoinError, reconcileParticipation } from "@/lib/user-demo";
 import { usePolling } from "@/lib/usePolling";
-import { useNotifications } from "@/components/notifications/NotificationsProvider";
+import NotificationsProvider, {
+  useNotifications,
+} from "@/components/notifications/NotificationsProvider";
 import type { UserDemoState } from "@/types/user-demo";
+import type { AuthApiResponse, User } from "@/types/auth";
+import Button, { ButtonLink } from "@/components/ui/Button";
+import Card, { CardBody } from "@/components/ui/Card";
+import Alert from "@/components/ui/Alert";
 
 /** How often the user screens re-check the queue API for admin changes. */
 const POLL_INTERVAL_MS = 4000;
 
 type UserDemoContextValue = {
+  user: User;
   state: UserDemoState;
   joinQueue: (serviceId: string) => Promise<void>;
   leaveQueue: () => Promise<void>;
@@ -34,42 +41,188 @@ type UserDemoContextValue = {
 const UserDemoContext = createContext<UserDemoContextValue | null>(null);
 
 function errorMessage(error: unknown) {
-  return error instanceof ApiError ? error.message : "The queue service could not be reached.";
+  return error instanceof ApiError
+    ? error.message
+    : "The queue service could not be reached.";
 }
 
-export default function UserDemoProvider({ children }: { children: ReactNode }) {
+/** Verify the existing session API before any account-specific queue requests. */
+export default function UserDemoProvider({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  const [session, setSession] = useState<{
+    user: User | null;
+    loading: boolean;
+    error: string | null;
+  }>({ user: null, loading: true, error: null });
+  const [attempt, setAttempt] = useState(0);
+  const rejectSession = useCallback(() => {
+    setSession({ user: null, loading: false, error: null });
+  }, []);
+
+  useEffect(() => {
+    let disposed = false;
+    let sequence = 0;
+    let controller: AbortController | undefined;
+    async function verify() {
+      const started = ++sequence;
+      controller?.abort();
+      controller = new AbortController();
+      try {
+        const response = await fetch("/api/auth/me", {
+          credentials: "same-origin",
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (disposed || started !== sequence) return;
+        if (response.status === 401 || response.status === 404) {
+          rejectSession();
+          return;
+        }
+        if (!response.ok) throw new Error("Session could not be verified.");
+        const body: AuthApiResponse = await response.json();
+        if (!body.success || !body.user)
+          throw new Error("Session could not be verified.");
+        if (!disposed && started === sequence)
+          setSession({ user: body.user, loading: false, error: null });
+      } catch {
+        if (!disposed && started === sequence)
+          setSession({
+            user: null,
+            loading: false,
+            error: "Your account could not be loaded. Please retry.",
+          });
+      }
+    }
+    void verify();
+    window.addEventListener("focus", verify);
+    return () => {
+      disposed = true;
+      controller?.abort();
+      window.removeEventListener("focus", verify);
+    };
+  }, [attempt, rejectSession]);
+
+  if (session.loading)
+    return (
+      <Card>
+        <CardBody>
+          <p role="status">Loading your account…</p>
+        </CardBody>
+      </Card>
+    );
+  if (!session.user)
+    return (
+      <Card>
+        <CardBody>
+          {session.error ? (
+            <>
+              <Alert
+                variant="error"
+                title="Account unavailable"
+                message={session.error}
+              />
+              <Button
+                className="mt-4"
+                onClick={() => {
+                  setSession({ user: null, loading: true, error: null });
+                  setAttempt((value) => value + 1);
+                }}
+              >
+                Retry
+              </Button>
+            </>
+          ) : (
+            <>
+              <p className="mb-4">Sign in to use your workspace.</p>
+              <ButtonLink href="/login">Sign in</ButtonLink>
+            </>
+          )}
+        </CardBody>
+      </Card>
+    );
+  return (
+    <NotificationsProvider
+      key={session.user.id}
+      initial={createUserDemoNotifications()}
+    >
+      <AuthenticatedWorkspace user={session.user} rejectSession={rejectSession}>
+        {children}
+      </AuthenticatedWorkspace>
+    </NotificationsProvider>
+  );
+}
+
+function AuthenticatedWorkspace({
+  children,
+  user,
+  rejectSession,
+}: {
+  children: ReactNode;
+  user: User;
+  rejectSession: () => void;
+}) {
   const [state, setState] = useState(createInitialUserDemo);
   // Event handlers and polling read the latest state before React re-renders.
   const latestState = useRef(state);
   // Bumped by every user action so stale poll responses are ignored.
   const version = useRef(0);
+  const requestSequence = useRef(0);
+  const mounted = useRef(true);
   const { notify, resetNotifications } = useNotifications();
   const router = useRouter();
 
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
   const update = useCallback((patch: Partial<UserDemoState>) => {
+    if (!mounted.current) return;
     latestState.current = { ...latestState.current, ...patch };
     setState(latestState.current);
   }, []);
 
   const refresh = useCallback(async () => {
+    if (!mounted.current) return;
     const startedAt = version.current;
+    const requestAt = ++requestSequence.current;
     try {
       const [services, participation] = await Promise.all([
         queueApi.list(),
-        queueApi.participation(demoAccount.id),
+        queueApi.participation(user.id),
       ]);
-      if (version.current !== startedAt) return;
+      if (
+        !mounted.current ||
+        version.current !== startedAt ||
+        requestAt !== requestSequence.current
+      )
+        return;
       const { patch, notifications } = reconcileParticipation(
         latestState.current,
         participation,
       );
       update({ ...patch, services, loadError: null });
       notifications.forEach(notify);
-    } catch {
+    } catch (error) {
+      if (
+        !mounted.current ||
+        version.current !== startedAt ||
+        requestAt !== requestSequence.current
+      )
+        return;
+      if (error instanceof ApiError && error.status === 401) {
+        rejectSession();
+        return;
+      }
       if (version.current === startedAt)
         update({ loadError: "Queue data could not be loaded. Retrying…" });
     }
-  }, [notify, update]);
+  }, [notify, update, user.id, rejectSession]);
 
   usePolling(refresh, POLL_INTERVAL_MS);
 
@@ -79,14 +232,19 @@ export default function UserDemoProvider({ children }: { children: ReactNode }) 
     version.current++;
     try {
       const { entry } = await queueApi.join(serviceId, {
-        userId: demoAccount.id,
-        userName: demoAccount.name,
+        userId: user.id,
+        userName: user.name,
       });
+      if (!mounted.current) return;
       const name =
-        latestState.current.services?.find((item) => item.id === serviceId)?.name ?? "the service";
+        latestState.current.services?.find((item) => item.id === serviceId)
+          ?.name ?? "the service";
       update({
         justServed: null,
-        feedback: { kind: "success", message: `You joined the queue for ${name}.` },
+        feedback: {
+          kind: "success",
+          message: `You joined the queue for ${name}.`,
+        },
       });
       notify({
         category: "queue-update",
@@ -97,7 +255,7 @@ export default function UserDemoProvider({ children }: { children: ReactNode }) 
         createdAt: entry.joinedAt,
       });
       await refresh();
-      router.push("/user/queue-status");
+      if (mounted.current) router.push("/user/queue-status");
     } catch (error) {
       update({ feedback: { kind: "error", message: errorMessage(error) } });
       await refresh();
@@ -110,10 +268,13 @@ export default function UserDemoProvider({ children }: { children: ReactNode }) 
     version.current++;
     try {
       const { record } = await queueApi.leave(current.serviceId, current.id);
+      if (!mounted.current) return;
       update({
         current: null,
-        history: [toHistoryRecord(record, current.service.name), ...latestState.current.history],
-        feedback: { kind: "success", message: `You left the queue for ${current.service.name}.` },
+        feedback: {
+          kind: "success",
+          message: `You left the queue for ${current.service.name}.`,
+        },
       });
       notify({
         category: "status-change",
@@ -145,6 +306,7 @@ export default function UserDemoProvider({ children }: { children: ReactNode }) 
     version.current++;
     try {
       await queueApi.resetDemo();
+      if (!mounted.current) return;
       latestState.current = createInitialUserDemo();
       setState(latestState.current);
       resetNotifications(createUserDemoNotifications());
@@ -155,7 +317,9 @@ export default function UserDemoProvider({ children }: { children: ReactNode }) 
   }
 
   return (
-    <UserDemoContext.Provider value={{ state, joinQueue, leaveQueue, advanceQueue, resetDemo }}>
+    <UserDemoContext.Provider
+      value={{ user, state, joinQueue, leaveQueue, advanceQueue, resetDemo }}
+    >
       {children}
     </UserDemoContext.Provider>
   );
