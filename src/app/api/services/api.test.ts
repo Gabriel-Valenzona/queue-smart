@@ -127,7 +127,7 @@ describe("service API access and validation", () => {
     expect(service.open).toBe(false);
     expect(getQueue(getQueueStore(), service.id).entries).toEqual([]);
     expect(
-      (await (await queues()).json()).queues.find(
+      (await (await queues(await request())).json()).queues.find(
         (s: { id: string }) => s.id === service.id,
       ),
     ).toMatchObject({ ...input, length: 0 });

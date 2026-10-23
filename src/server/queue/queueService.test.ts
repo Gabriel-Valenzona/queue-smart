@@ -254,7 +254,7 @@ describe("getParticipation", () => {
 
 describe("seed data", () => {
   it("starts Alex Morgan third for Student services with a 15-minute wait", () => {
-    const participation = getParticipation(createSeedStore(), "alex-morgan");
+    const participation = getParticipation(createSeedStore(), "usr_alex_002");
     expect(participation.current).toMatchObject({
       serviceId: "student-services",
       position: 3,

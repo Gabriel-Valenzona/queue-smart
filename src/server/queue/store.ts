@@ -51,9 +51,9 @@ export function createSeedStore(): QueueStore {
     services: seedServices.map((service) => ({ ...service })),
     queues: {
       "student-services": [
-        seedEntry("seed-1", "student-services", "jordan-lee", "Jordan Lee", "2026-10-01T09:52:00Z"),
+        seedEntry("seed-1", "student-services", "usr_demo_003", "Jordan Lee", "2026-10-01T09:52:00Z"),
         seedEntry("seed-2", "student-services", "taylor-nguyen", "Taylor Nguyen", "2026-10-01T09:56:00Z"),
-        seedEntry("seed-3", "student-services", "alex-morgan", "Alex Morgan", "2026-10-01T10:00:00Z"),
+        seedEntry("seed-3", "student-services", "usr_alex_002", "Alex Morgan", "2026-10-01T10:00:00Z"),
       ],
       "technology-support": [
         seedEntry("seed-4", "technology-support", "casey-kim", "Casey Kim", "2026-10-01T09:41:00Z"),
