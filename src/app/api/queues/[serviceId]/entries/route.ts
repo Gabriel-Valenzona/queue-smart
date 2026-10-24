@@ -7,6 +7,7 @@ import {
 } from "@/server/queue";
 import { moduleHandler } from "@/server/modules/http";
 import { ModuleError } from "@/server/modules/errors";
+import { publishQueueNotifications } from "@/server/notifications/publish";
 
 /** POST /api/queues/:serviceId/entries { userId, userName, priority? } — join a queue. */
 export async function POST(
@@ -22,9 +23,15 @@ export async function POST(
         "forbidden",
         "You can only join a queue as yourself.",
       );
-    return Response.json(
-      joinQueue(getQueueStore(), serviceId, { ...input, userName: user.name }),
-      { status: 201 },
-    );
+    const result = joinQueue(getQueueStore(), serviceId, {
+      ...input,
+      userName: user.name,
+    });
+    await publishQueueNotifications({
+      events: result.events,
+      serviceIds: [serviceId],
+      actorId: user.id,
+    });
+    return Response.json(result, { status: 201 });
   });
 }

@@ -10,6 +10,7 @@ import {
 } from "@/server/queue";
 import { moduleHandler } from "@/server/modules/http";
 import { ModuleError } from "@/server/modules/errors";
+import { publishQueueNotifications } from "@/server/notifications/publish";
 
 type Context = RouteContext<"/api/queues/[serviceId]/entries/[entryId]">;
 
@@ -40,7 +41,13 @@ export async function DELETE(request: Request, ctx: Context) {
         "forbidden",
         "You can only leave your own queue.",
       );
-    return Response.json(leaveQueue(store, serviceId, entryId));
+    const result = leaveQueue(store, serviceId, entryId);
+    await publishQueueNotifications({
+      events: result.events,
+      serviceIds: [serviceId],
+      actorId: user.id,
+    });
+    return Response.json(result);
   });
 }
 
@@ -48,12 +55,17 @@ export async function DELETE(request: Request, ctx: Context) {
 export async function PATCH(request: Request, ctx: Context) {
   return moduleHandler(
     request,
-    async () => {
+    async (user) => {
       const { serviceId, entryId } = await readParams(ctx);
       const { direction } = validateMoveEntry(await readJson(request));
-      return Response.json(
-        moveEntry(getQueueStore(), serviceId, entryId, direction),
-      );
+      const result = moveEntry(getQueueStore(), serviceId, entryId, direction);
+      // A reorder raises no event of its own, so the service is named here.
+      await publishQueueNotifications({
+        events: result.events,
+        serviceIds: [serviceId],
+        actorId: user.id,
+      });
+      return Response.json(result);
     },
     true,
   );

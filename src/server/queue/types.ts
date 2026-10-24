@@ -39,18 +39,33 @@ export type CompletedParticipation = {
 
 export type EntryStatus = "waiting" | "almost-ready";
 
+/** How an estimated wait was produced, so the UI can explain it. */
+export type WaitEstimate = {
+  /** Whole minutes; what the UI shows. */
+  minutes: number;
+  /** Minutes per user the estimate used. */
+  serviceMinutes: number;
+  /** "observed" once a service has measurable completions of its own. */
+  basis: "configured" | "observed";
+  /** Observed intervals behind the estimate; 0 when the duration was used. */
+  sampleSize: number;
+};
+
 /** An entry as returned by the API, with its computed place in line. */
 export type QueueEntryView = QueueEntry & {
   /** 1-based; position 1 is the next user to be served. */
   position: number;
   status: EntryStatus;
   estimatedWaitMinutes: number;
+  /** The same wait with its reasoning; added in A3 alongside the estimator. */
+  estimate?: WaitEstimate;
 };
 
 export type QueueSummary = QueueService & {
   length: number;
   /** Estimated wait for someone joining now. */
   estimatedWaitMinutes: number;
+  estimate?: WaitEstimate;
 };
 
 export type QueueDetail = {

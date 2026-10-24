@@ -10,10 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
-import {
-  createInitialUserDemo,
-  createUserDemoNotifications,
-} from "@/data/user-demo";
+import { createInitialUserDemo } from "@/data/user-demo";
 import { ApiError, queueApi } from "@/lib/api/queues";
 import { getJoinError, reconcileParticipation } from "@/lib/user-demo";
 import { usePolling } from "@/lib/usePolling";
@@ -144,10 +141,7 @@ export default function UserDemoProvider({
       </Card>
     );
   return (
-    <NotificationsProvider
-      key={session.user.id}
-      initial={createUserDemoNotifications()}
-    >
+    <NotificationsProvider key={session.user.id} userId={session.user.id}>
       <AuthenticatedWorkspace user={session.user} rejectSession={rejectSession}>
         {children}
       </AuthenticatedWorkspace>
@@ -171,7 +165,8 @@ function AuthenticatedWorkspace({
   const version = useRef(0);
   const requestSequence = useRef(0);
   const mounted = useRef(true);
-  const { notify, resetNotifications } = useNotifications();
+  const { refresh: refreshNotifications, resetNotifications } =
+    useNotifications();
   const router = useRouter();
 
   useEffect(() => {
@@ -202,12 +197,13 @@ function AuthenticatedWorkspace({
         requestAt !== requestSequence.current
       )
         return;
-      const { patch, notifications } = reconcileParticipation(
+      // Notifications for these changes come from the API; this only keeps
+      // the screens in step with the user's place in line.
+      const { patch } = reconcileParticipation(
         latestState.current,
         participation,
       );
       update({ ...patch, services, loadError: null });
-      notifications.forEach(notify);
     } catch (error) {
       if (
         !mounted.current ||
@@ -222,7 +218,7 @@ function AuthenticatedWorkspace({
       if (version.current === startedAt)
         update({ loadError: "Queue data could not be loaded. Retrying…" });
     }
-  }, [notify, update, user.id, rejectSession]);
+  }, [update, user.id, rejectSession]);
 
   usePolling(refresh, POLL_INTERVAL_MS);
 
@@ -231,7 +227,7 @@ function AuthenticatedWorkspace({
     if (error) return update({ feedback: { kind: "error", message: error } });
     version.current++;
     try {
-      const { entry } = await queueApi.join(serviceId, {
+      await queueApi.join(serviceId, {
         userId: user.id,
         userName: user.name,
       });
@@ -246,15 +242,8 @@ function AuthenticatedWorkspace({
           message: `You joined the queue for ${name}.`,
         },
       });
-      notify({
-        category: "queue-update",
-        tone: "info",
-        title: "You’re in the queue",
-        detail: `${name}: position ${entry.position}, estimated wait ${entry.estimatedWaitMinutes} minutes.`,
-        service: name,
-        createdAt: entry.joinedAt,
-      });
-      await refresh();
+      // The queue API notifies the joiner with their position and wait.
+      await Promise.all([refresh(), refreshNotifications()]);
       if (mounted.current) router.push("/user/queue-status");
     } catch (error) {
       update({ feedback: { kind: "error", message: errorMessage(error) } });
@@ -267,7 +256,7 @@ function AuthenticatedWorkspace({
     if (!current) return;
     version.current++;
     try {
-      const { record } = await queueApi.leave(current.serviceId, current.id);
+      await queueApi.leave(current.serviceId, current.id);
       if (!mounted.current) return;
       update({
         current: null,
@@ -276,14 +265,7 @@ function AuthenticatedWorkspace({
           message: `You left the queue for ${current.service.name}.`,
         },
       });
-      notify({
-        category: "status-change",
-        tone: "warning",
-        title: "Queue canceled",
-        detail: `You left the queue for ${current.service.name}.`,
-        service: current.service.name,
-        createdAt: record.completedAt,
-      });
+      await refreshNotifications();
     } catch (error) {
       update({ feedback: { kind: "error", message: errorMessage(error) } });
     }
@@ -298,8 +280,8 @@ function AuthenticatedWorkspace({
     } catch (error) {
       update({ feedback: { kind: "error", message: errorMessage(error) } });
     }
-    // The poll comparison raises the "updated", "almost ready", or "served" notice.
-    await refresh();
+    // The queue API notifies whoever was served and whoever is next.
+    await Promise.all([refresh(), refreshNotifications()]);
   }
 
   async function resetDemo() {
@@ -309,7 +291,7 @@ function AuthenticatedWorkspace({
       if (!mounted.current) return;
       latestState.current = createInitialUserDemo();
       setState(latestState.current);
-      resetNotifications(createUserDemoNotifications());
+      resetNotifications();
     } catch (error) {
       update({ feedback: { kind: "error", message: errorMessage(error) } });
     }

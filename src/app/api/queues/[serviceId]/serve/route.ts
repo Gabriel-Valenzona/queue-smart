@@ -1,5 +1,6 @@
 import { getQueueStore, serveNext, validateId } from "@/server/queue";
 import { moduleHandler } from "@/server/modules/http";
+import { publishQueueNotifications } from "@/server/notifications/publish";
 
 /** POST /api/queues/:serviceId/serve — serve the user at the front of the line. */
 export async function POST(
@@ -8,9 +9,15 @@ export async function POST(
 ) {
   return moduleHandler(
     request,
-    async () => {
+    async (user) => {
       const serviceId = validateId((await ctx.params).serviceId, "serviceId");
-      return Response.json(serveNext(getQueueStore(), serviceId));
+      const result = serveNext(getQueueStore(), serviceId);
+      await publishQueueNotifications({
+        events: result.events,
+        serviceIds: [serviceId],
+        actorId: user.id,
+      });
+      return Response.json(result);
     },
     true,
   );
