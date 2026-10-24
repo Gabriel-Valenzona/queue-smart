@@ -13,7 +13,7 @@ import type {
   QueueSummary,
 } from "./types";
 import type { JoinQueueInput } from "./validation";
-import { estimateWaitMinutes } from "./waitTime";
+import { estimateWait, statusFor } from "./waitTime";
 
 const priorityRank: Record<Priority, number> = { high: 3, medium: 2, low: 1 };
 
@@ -32,13 +32,20 @@ function queueOf(store: QueueStore, serviceId: string) {
   return store.queues[serviceId];
 }
 
-function toView(entry: QueueEntry, index: number, service: QueueService): QueueEntryView {
+function toView(
+  store: QueueStore,
+  entry: QueueEntry,
+  index: number,
+  service: QueueService,
+): QueueEntryView {
   const position = index + 1;
+  const estimate = estimateWait(position, service, store.completed);
   return {
     ...entry,
     position,
-    status: position === 1 ? "almost-ready" : "waiting",
-    estimatedWaitMinutes: estimateWaitMinutes(position, service.duration),
+    status: statusFor(position, estimate.minutes),
+    estimatedWaitMinutes: estimate.minutes,
+    estimate,
   };
 }
 
@@ -79,7 +86,7 @@ function headChangeEvents(
 ): QueueEvent[] {
   const head = queueOf(store, service.id)[0];
   if (!head || head.id === previousHeadId) return [];
-  return [{ type: "almost-ready", entry: toView(head, 0, service) }];
+  return [{ type: "almost-ready", entry: toView(store, head, 0, service) }];
 }
 
 /**
@@ -94,10 +101,12 @@ export function insertionIndex(queue: QueueEntry[], priority: Priority) {
 export function listQueues(store: QueueStore): QueueSummary[] {
   return store.services.map((service) => {
     const length = queueOf(store, service.id).length;
+    const estimate = estimateWait(length + 1, service, store.completed);
     return {
       ...service,
       length,
-      estimatedWaitMinutes: estimateWaitMinutes(length + 1, service.duration),
+      estimatedWaitMinutes: estimate.minutes,
+      estimate,
     };
   });
 }
@@ -106,7 +115,9 @@ export function getQueue(store: QueueStore, serviceId: string): QueueDetail {
   const service = findService(store, serviceId);
   return {
     service,
-    entries: queueOf(store, serviceId).map((entry, index) => toView(entry, index, service)),
+    entries: queueOf(store, serviceId).map((entry, index) =>
+      toView(store, entry, index, service),
+    ),
   };
 }
 
@@ -140,7 +151,7 @@ export function joinQueue(
   queue.splice(index, 0, entry);
 
   // Only the joiner can become the new front, and their entry already says so.
-  const view = toView(entry, index, service);
+  const view = toView(store, entry, index, service);
   return { entry: view, events: [{ type: "joined", entry: view }] };
 }
 
@@ -227,7 +238,10 @@ export function getParticipation(store: QueueStore, userId: string): Participati
   const active = findActiveEntry(store, userId);
   return {
     current: active
-      ? { ...toView(active.entry, active.index, active.service), service: { ...active.service } }
+      ? {
+          ...toView(store, active.entry, active.index, active.service),
+          service: { ...active.service },
+        }
       : null,
     lastCompleted: store.completed.find((record) => record.userId === userId) ?? null,
   };

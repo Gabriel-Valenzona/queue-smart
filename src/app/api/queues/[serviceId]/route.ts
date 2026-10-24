@@ -7,6 +7,7 @@ import {
   validateSetQueueOpen,
 } from "@/server/queue";
 import { moduleHandler } from "@/server/modules/http";
+import { publishQueueNotifications } from "@/server/notifications/publish";
 
 /** GET /api/queues/:serviceId — the ordered waiting list (admin view). */
 export async function GET(
@@ -30,10 +31,15 @@ export async function PATCH(
 ) {
   return moduleHandler(
     request,
-    async () => {
+    async (user) => {
       const serviceId = validateId((await ctx.params).serviceId, "serviceId");
       const { open } = validateSetQueueOpen(await readJson(request));
-      return Response.json(setQueueOpen(getQueueStore(), serviceId, open));
+      const result = setQueueOpen(getQueueStore(), serviceId, open);
+      await publishQueueNotifications({
+        events: result.events,
+        actorId: user.id,
+      });
+      return Response.json(result);
     },
     true,
   );

@@ -28,7 +28,6 @@ import Bell from "@/components/icons/Bell";
 import Clock from "@/components/icons/Clock";
 import Plus from "@/components/icons/Plus";
 import Avatar from "@/components/ui/Avatar";
-import { sampleAdminNotifications } from "@/data/notifications";
 import {
   ApiError,
   queueApi,
@@ -611,8 +610,11 @@ function AdminWorkspace() {
 }
 
 export default function AdminPage() {
+  // The feed belongs to the signed-in administrator, so the provider waits for
+  // the session before it reads or writes anything.
+  const { user } = useCurrentUser();
   return (
-    <NotificationsProvider initial={sampleAdminNotifications}>
+    <NotificationsProvider userId={user?.id}>
       <AdminWorkspace />
     </NotificationsProvider>
   );
