@@ -7,8 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run && node --import tsx --test tests/auth/*.test.ts",
-    "test:auth": "node --import tsx --test tests/auth/*.test.ts",
+    "test": "vitest run && npm run test:auth",
+    "test:auth": "node --import tsx --import ./tests/auth/setup.ts --test tests/auth/*.test.ts",
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
@@ -18,7 +18,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
+    "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitest/coverage-v8": "^4.1.12",
@@ -28,5 +28,8 @@
     "tsx": "^4.23.15",
     "typescript": "^5",
     "vitest": "^4.1.12"
+  },
+  "engines": {
+    "node": ">=22.13"
   }
 }

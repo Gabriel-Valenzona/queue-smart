@@ -2,17 +2,36 @@ import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { AuthService } from "../../src/lib/auth/auth-service";
 import { UserStore } from "../../src/lib/auth/user-store";
+import { openDatabase } from "../../src/server/db/connection";
 
 describe("AuthService Business Logic & Role Handling", () => {
   let store: UserStore;
   let service: AuthService;
 
   beforeEach(() => {
-    store = new UserStore();
+    store = new UserStore(() => openDatabase(":memory:"));
     service = new AuthService(store);
   });
 
   describe("User Registration", () => {
+    const password = "UserSecret123!";
+
+    it("should let only one of two simultaneous registrations for an email succeed", async () => {
+      const body = { email: "race@example.com", password, confirmPassword: password };
+      const results = await Promise.all([service.registerUser(body), service.registerUser(body)]);
+      assert.deepEqual(results.map((result) => result.statusCode).sort(), [201, 409]);
+    });
+
+    it("should keep a name derived from the email within the stored limits", async () => {
+      const long = await service.registerUser({ email: `${"a".repeat(150)}@example.com`, password });
+      assert.equal(long.statusCode, 201);
+      assert.equal(long.user?.name.length, 100);
+
+      const blank = await service.registerUser({ email: ".@example.com", password });
+      assert.equal(blank.statusCode, 201);
+      assert.equal(blank.user?.name, "QueueSmart User");
+    });
+
     it("should successfully register a standard user", async () => {
       const result = await service.registerUser({
         name: "Riley Carter",

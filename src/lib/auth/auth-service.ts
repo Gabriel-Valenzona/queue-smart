@@ -7,8 +7,8 @@ import type {
   RegisterPayload,
   LoginPayload,
 } from "@/types/auth";
-import { validateRegisterInput, validateLoginInput } from "./validation";
-import { UserStore, userStore as defaultStore } from "./user-store";
+import { LIMITS, validateRegisterInput, validateLoginInput } from "./validation";
+import { DuplicateEmailError, UserStore, userStore as defaultStore } from "./user-store";
 import { generateSalt, hashPassword, verifyPassword } from "./crypto";
 
 const SESSION_SECRET =
@@ -122,34 +122,44 @@ export class AuthService {
       : email.split("@")[0]
           .split(/[._-]/)
           .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-          .join(" ");
+          .join(" ")
+          .trim()
+          .slice(0, LIMITS.NAME_MAX_LENGTH)
+          .trim();
 
     if (!name) name = role === "admin" ? "Administrator" : "QueueSmart User";
 
+    const emailTaken: AuthServiceResult = {
+      success: false,
+      statusCode: 409,
+      message: "An account with this email address already exists.",
+      errors: {
+        email: "This email address is already registered. Please log in instead.",
+      },
+    };
+
     // 2. Check for duplicate registration
     const existing = await this.store.findByEmail(email);
-    if (existing) {
-      return {
-        success: false,
-        statusCode: 409,
-        message: "An account with this email address already exists.",
-        errors: {
-          email: "This email address is already registered. Please log in instead.",
-        },
-      };
-    }
+    if (existing) return emailTaken;
 
     // 3. Hash password and store user
     const salt = generateSalt();
     const passwordHash = hashPassword(password, salt);
 
-    const storedUser = await this.store.create({
-      name,
-      email,
-      role,
-      passwordHash,
-      salt,
-    });
+    let storedUser: StoredUser;
+    try {
+      storedUser = await this.store.create({
+        name,
+        email,
+        role,
+        passwordHash,
+        salt,
+      });
+    } catch (error) {
+      // Two registrations can pass the check above; the database lets one win.
+      if (error instanceof DuplicateEmailError) return emailTaken;
+      throw error;
+    }
 
     const user = this.sanitizeUser(storedUser);
     const token = this.createSessionToken(user);

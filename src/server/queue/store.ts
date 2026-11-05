@@ -1,6 +1,25 @@
+import {
+  type Database,
+  getDatabase,
+  SQLITE_CONSTRAINT_UNIQUE,
+  sqliteErrorCode,
+  transaction,
+} from "@/server/db/connection";
+import { seedUsers } from "@/lib/auth/user-store";
+import { QueueError } from "./errors";
+import {
+  clearQueues,
+  countQueues,
+  readQueueState,
+  saveLine,
+} from "./repository";
 import type { CompletedParticipation, QueueEntry, QueueService } from "./types";
 
-/** In-memory data for the queue module. No database is used in A3. */
+/**
+ * The queue module's working data. The server's store is loaded from SQLite
+ * (see `loadQueueStore`) and every queue change is written back to it; stores
+ * from `createSeedStore`/`createEmptyStore` stay in memory for unit tests.
+ */
 export type QueueStore = {
   services: QueueService[];
   /** Ordered waiting lists keyed by service id; index 0 is served next. */
@@ -73,15 +92,85 @@ export function createEmptyStore(services: QueueService[] = []): QueueStore {
   };
 }
 
+/** Stores loaded from a database, and the database each writes through to. */
+const databases = new WeakMap<QueueStore, Database>();
+
+/** Replaces the store's queue data with what the database holds. */
+function hydrate(store: QueueStore, db: Database) {
+  const state = readQueueState(db, store.services);
+  for (const service of store.services)
+    service.open = state.open.get(service.id) ?? service.open;
+  store.queues = state.queues;
+  store.completed = state.completed;
+}
+
+/** Writes the demo queues, and the accounts waiting in them, into a database with no queues yet. */
+export function seedQueues(db: Database) {
+  seedUsers(db);
+  transaction(db, () => {
+    if (countQueues(db) > 0) return;
+    const seed = createSeedStore();
+    for (const service of seed.services) saveLine(db, service, seed.queues[service.id]);
+  });
+}
+
+/**
+ * Loads queues and entries from the database. Services are not in the
+ * database yet, so `services` (the seed list by default) decides which queues
+ * the store exposes; any of them without a queue gets one.
+ */
+export function loadQueueStore(
+  db: Database,
+  services: QueueService[] = createSeedStore().services,
+): QueueStore {
+  const store = createEmptyStore(services);
+  transaction(db, () => hydrate(store, db));
+  databases.set(store, db);
+  return store;
+}
+
+/**
+ * Commits `write` for a store loaded from a database. Queue logic changes the
+ * store first; if the database rejects the change, the store is reloaded so it
+ * never shows data that was not saved. Stores built in memory skip this.
+ */
+export function writeThrough(store: QueueStore, write: (db: Database) => void) {
+  const db = databases.get(store);
+  if (!db) return;
+  try {
+    transaction(db, () => write(db));
+  } catch (error) {
+    hydrate(store, db);
+    if (
+      sqliteErrorCode(error) === SQLITE_CONSTRAINT_UNIQUE &&
+      error instanceof Error &&
+      error.message.includes("queue_entries.user_id")
+    )
+      throw new QueueError(
+        "already_in_queue",
+        "This user is already waiting in another queue. Leave that queue first.",
+      );
+    throw error;
+  }
+}
+
 // Kept on globalThis so every route handler (and dev hot reloads) share one store.
 const globalForQueue = globalThis as typeof globalThis & { __queueStore?: QueueStore };
 
 export function getQueueStore(): QueueStore {
-  globalForQueue.__queueStore ??= createSeedStore();
+  if (!globalForQueue.__queueStore) {
+    const db = getDatabase();
+    seedQueues(db);
+    globalForQueue.__queueStore = loadQueueStore(db);
+  }
   return globalForQueue.__queueStore;
 }
 
+/** Deletes every saved queue and entry, then restores the demo queues. */
 export function resetQueueStore(): QueueStore {
-  globalForQueue.__queueStore = createSeedStore();
+  const db = getDatabase();
+  transaction(db, () => clearQueues(db));
+  seedQueues(db);
+  globalForQueue.__queueStore = loadQueueStore(db);
   return globalForQueue.__queueStore;
 }

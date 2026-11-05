@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { QueueError } from "./errors";
-import type { QueueStore } from "./store";
+import { saveLine, saveQueueStatus } from "./repository";
+import { type QueueStore, writeThrough } from "./store";
 import type {
   CompletedParticipation,
   Participation,
@@ -149,6 +150,7 @@ export function joinQueue(
   };
   const index = insertionIndex(queue, entry.priority);
   queue.splice(index, 0, entry);
+  writeThrough(store, (db) => saveLine(db, service, queue));
 
   // Only the joiner can become the new front, and their entry already says so.
   const view = toView(store, entry, index, service);
@@ -170,6 +172,7 @@ export function leaveQueue(
   const previousHeadId = queue[0]?.id;
   const [entry] = queue.splice(index, 1);
   const record = complete(store, entry, "canceled", clock);
+  writeThrough(store, (db) => saveLine(db, service, queue, record));
   return {
     record,
     events: [{ type: "left", record }, ...headChangeEvents(store, service, previousHeadId)],
@@ -187,6 +190,7 @@ export function serveNext(
   if (!next) throw new QueueError("queue_empty", `No one is waiting for ${service.name}.`);
 
   const record = complete(store, next, "served", clock);
+  writeThrough(store, (db) => saveLine(db, service, queue, record));
   return {
     record,
     events: [{ type: "served", record }, ...headChangeEvents(store, service, next.id)],
@@ -214,6 +218,7 @@ export function moveEntry(
 
   const previousHeadId = queue[0].id;
   [queue[from], queue[to]] = [queue[to], queue[from]];
+  writeThrough(store, (db) => saveLine(db, service, queue));
   return {
     entries: getQueue(store, serviceId).entries,
     events: headChangeEvents(store, service, previousHeadId),
@@ -228,6 +233,7 @@ export function setQueueOpen(
   const service = findService(store, serviceId);
   const changed = service.open !== open;
   service.open = open;
+  if (changed) writeThrough(store, (db) => saveQueueStatus(db, service));
   return {
     service: { ...service },
     events: changed ? [{ type: open ? "queue-opened" : "queue-closed", serviceId }] : [],

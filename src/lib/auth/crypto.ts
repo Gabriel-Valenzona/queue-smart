@@ -1,5 +1,8 @@
 import crypto from "node:crypto";
 
+/** OWASP's recommended minimum for PBKDF2 with HMAC-SHA256. */
+const PBKDF2_ITERATIONS = 600_000;
+
 /**
  * Generates a random cryptographic salt.
  */
@@ -11,7 +14,7 @@ export function generateSalt(length = 16): string {
  * Hashes a plaintext password using PBKDF2 with HMAC-SHA256 and salt.
  */
 export function hashPassword(password: string, salt: string): string {
-  return crypto.pbkdf2Sync(password, salt, 10000, 64, "sha256").toString("hex");
+  return crypto.pbkdf2Sync(password, salt, PBKDF2_ITERATIONS, 64, "sha256").toString("hex");
 }
 
 /**

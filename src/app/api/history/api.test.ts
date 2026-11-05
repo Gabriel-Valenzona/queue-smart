@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { authService } from "@/lib/auth/auth-service";
+import { getDatabase } from "@/server/db/connection";
 import { getQueueStore, resetQueueStore } from "@/server/queue/store";
 import { joinQueue, leaveQueue, serveNext } from "@/server/queue/queueService";
 import { updateService } from "@/server/services/service";
@@ -80,6 +81,8 @@ describe("authenticated history API", () => {
   });
   it("canceled visits survive history reload without duplicates", async () => {
     const store = getQueueStore();
+    // Start from empty lines in the database as well as in memory.
+    getDatabase().exec("DELETE FROM queue_entries");
     store.queues["student-services"] = [];
     store.queues["technology-support"] = [];
     const { entry } = joinQueue(
@@ -125,6 +128,8 @@ describe("authenticated history API", () => {
 
   it("served repeat visits keep their completion names after service edits", async () => {
     const store = getQueueStore();
+    // Start from empty lines in the database as well as in memory.
+    getDatabase().exec("DELETE FROM queue_entries");
     store.queues["student-services"] = [];
     store.queues["technology-support"] = [];
     const user = {

@@ -7,6 +7,8 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    // Each test worker gets its own throwaway database.
+    env: { QUEUESMART_DB_PATH: ":memory:" },
     include: ["src/**/*.test.ts"],
     coverage: {
       provider: "v8",
