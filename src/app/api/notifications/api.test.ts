@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { authService } from "@/lib/auth/auth-service";
-import { getNotificationStore, resetNotificationStore } from "@/server/notifications";
+import {
+  countNotifications,
+  getNotificationDatabase,
+  resetNotificationStore,
+} from "@/server/notifications";
 import { resetQueueStore } from "@/server/queue";
 import {
   DELETE as clearAll,
@@ -287,7 +291,7 @@ describe("authentication", () => {
       putPreferences(anonymous),
     ]);
     expect(responses.map((response) => response.status)).toEqual(Array(8).fill(401));
-    expect(getNotificationStore().notifications).toHaveLength(3);
+    expect(countNotifications(getNotificationDatabase())).toBe(3);
   });
 });
 

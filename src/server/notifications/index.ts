@@ -1,4 +1,6 @@
 export * from "./preferences";
+export * from "./repository";
+export * from "./schema";
 export * from "./publish";
 export * from "./queueEvents";
 export * from "./service";

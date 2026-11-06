@@ -1,4 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
+import { applyNotificationSchema } from "@/server/notifications/schema";
 
 /**
  * UserCredentials, Queue and QueueEntry tables. STRICT tables reject values
@@ -66,4 +67,6 @@ const tables = `
 
 export function applySchema(db: DatabaseSync) {
   db.exec(tables);
+  // The notification module keeps its own tables; they reference these.
+  applyNotificationSchema(db);
 }

@@ -2,13 +2,14 @@ import { moduleHandler } from "@/server/modules/http";
 import {
   clearNotifications,
   createNotification,
-  getNotificationStore,
+  getNotificationDatabase,
   listNotifications,
   markAllRead,
   validateFeedQuery,
   validateNotificationInput,
   validateReadUpdate,
 } from "@/server/notifications";
+import { transaction } from "@/server/db/connection";
 import { readJson } from "@/server/queue";
 import { QueueError } from "@/server/queue/errors";
 
@@ -17,7 +18,7 @@ export async function GET(request: Request) {
   return moduleHandler(request, (user) => {
     const query = validateFeedQuery(new URL(request.url).searchParams);
     return Response.json(
-      listNotifications(getNotificationStore(), user.id, query),
+      listNotifications(getNotificationDatabase(), user.id, query),
     );
   });
 }
@@ -30,7 +31,8 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   return moduleHandler(request, async (user) => {
     const input = validateNotificationInput(await readJson(request), user.id);
-    const notification = createNotification(getNotificationStore(), input);
+    const db = getNotificationDatabase();
+    const notification = transaction(db, () => createNotification(db, input));
     return notification
       ? Response.json({ notification }, { status: 201 })
       : Response.json(
@@ -51,9 +53,9 @@ export async function PATCH(request: Request) {
       throw new QueueError("validation_error", "Some fields are invalid.", {
         read: "Only marking every notification as read is supported here.",
       });
-    const store = getNotificationStore();
-    const updated = markAllRead(store, user.id);
-    const { unreadCount, total } = listNotifications(store, user.id);
+    const db = getNotificationDatabase();
+    const updated = markAllRead(db, user.id);
+    const { unreadCount, total } = listNotifications(db, user.id);
     return Response.json({ updated, unreadCount, total });
   });
 }
@@ -61,7 +63,7 @@ export async function PATCH(request: Request) {
 /** DELETE /api/notifications — clear the signed-in account's feed. */
 export async function DELETE(request: Request) {
   return moduleHandler(request, (user) => {
-    const removed = clearNotifications(getNotificationStore(), user.id);
+    const removed = clearNotifications(getNotificationDatabase(), user.id);
     return Response.json({ removed, unreadCount: 0, total: 0 });
   });
 }
