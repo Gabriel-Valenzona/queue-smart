@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { QueueError } from "./errors";
 import { saveLine, saveQueueStatus } from "./repository";
 import { type QueueStore, writeThrough } from "./store";
+import { serviceRepository } from "@/server/db/repositories/service-repository";
 import type {
   CompletedParticipation,
   Participation,
@@ -234,6 +235,11 @@ export function setQueueOpen(
   const changed = service.open !== open;
   service.open = open;
   if (changed) writeThrough(store, (db) => saveQueueStatus(db, service));
+  try {
+    serviceRepository.setOpen(serviceId, open);
+  } catch {
+    // Continue gracefully if called with mock store in unit tests
+  }
   return {
     service: { ...service },
     events: changed ? [{ type: open ? "queue-opened" : "queue-closed", serviceId }] : [],

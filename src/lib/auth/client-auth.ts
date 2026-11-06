@@ -54,17 +54,16 @@ export async function logoutUser(): Promise<void> {
  * Hook to access and listen to current authenticated user.
  */
 export function useCurrentUser() {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(() => {
+    if (typeof window === "undefined") return null;
+    return getStoredUser();
+  });
+  const [loading, setLoading] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return !getStoredUser();
+  });
 
   useEffect(() => {
-    // Check local storage first for instant rendering
-    const local = getStoredUser();
-    if (local) {
-      setUser(local);
-      setLoading(false);
-    }
-
     // Verify session with backend /api/auth/me
     fetch("/api/auth/me", { credentials: "same-origin" })
       .then((res) => (res.ok ? res.json() : null))
@@ -72,7 +71,7 @@ export function useCurrentUser() {
         if (data?.success && data?.user) {
           setUser(data.user);
           setStoredUser(data.user);
-        } else if (!local) {
+        } else if (!getStoredUser()) {
           setUser(null);
         }
       })

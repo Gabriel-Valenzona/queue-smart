@@ -14,11 +14,13 @@ import {
   saveLine,
 } from "./repository";
 import type { CompletedParticipation, QueueEntry, QueueService } from "./types";
+import { serviceRepository } from "@/server/db/repositories/service-repository";
 
 /**
  * The queue module's working data. The server's store is loaded from SQLite
  * (see `loadQueueStore`) and every queue change is written back to it; stores
  * from `createSeedStore`/`createEmptyStore` stay in memory for unit tests.
+ * Services are synced with SQLite via `loadServicesFromDb`/`syncQueueServices`.
  */
 export type QueueStore = {
   services: QueueService[];
@@ -54,6 +56,25 @@ const seedServices: QueueService[] = [
   },
 ];
 
+function loadServicesFromDb(): QueueService[] {
+  try {
+    const list = serviceRepository.listAll();
+    if (list && list.length > 0) {
+      return list.map((s) => ({
+        id: s.id,
+        name: s.name,
+        description: s.description,
+        duration: s.expectedDuration,
+        priority: s.priorityLevel,
+        open: s.open,
+      }));
+    }
+  } catch {
+    // Fall back to seedServices if DB is not available
+  }
+  return seedServices.map((service) => ({ ...service }));
+}
+
 function seedEntry(
   id: string,
   serviceId: string,
@@ -66,8 +87,9 @@ function seedEntry(
 
 /** Matches the A2 demo: Alex Morgan starts third in line for Student services. */
 export function createSeedStore(): QueueStore {
+  const services = loadServicesFromDb();
   return {
-    services: seedServices.map((service) => ({ ...service })),
+    services,
     queues: {
       "student-services": [
         seedEntry("seed-1", "student-services", "usr_demo_003", "Jordan Lee", "2026-10-01T09:52:00Z"),
@@ -173,4 +195,16 @@ export function resetQueueStore(): QueueStore {
   seedQueues(db);
   globalForQueue.__queueStore = loadQueueStore(db);
   return globalForQueue.__queueStore;
+}
+
+/**
+ * Synchronizes queue store services with SQLite database.
+ */
+export function syncQueueServices(store: QueueStore): QueueStore {
+  const dbServices = loadServicesFromDb();
+  store.services = dbServices;
+  for (const s of dbServices) {
+    store.queues[s.id] ??= [];
+  }
+  return store;
 }

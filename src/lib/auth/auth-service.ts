@@ -9,6 +9,11 @@ import type {
 } from "@/types/auth";
 import { LIMITS, validateRegisterInput, validateLoginInput } from "./validation";
 import { DuplicateEmailError, UserStore, userStore as defaultStore } from "./user-store";
+import type {
+  UserProfile,
+  UserPreferences,
+  UpdateUserProfileInput,
+} from "@/server/db/types";
 import { generateSalt, hashPassword, verifyPassword } from "./crypto";
 
 const SESSION_SECRET =
@@ -146,6 +151,16 @@ export class AuthService {
     const salt = generateSalt();
     const passwordHash = hashPassword(password, salt);
 
+    const contactInfo =
+      typeof (data as Record<string, unknown>).contactInfo === "string"
+        ? ((data as Record<string, unknown>).contactInfo as string).trim()
+        : null;
+
+    const preferences =
+      (data as Record<string, unknown>).preferences !== undefined
+        ? ((data as Record<string, unknown>).preferences as UserPreferences)
+        : null;
+
     let storedUser: StoredUser;
     try {
       storedUser = await this.store.create({
@@ -154,6 +169,8 @@ export class AuthService {
         role,
         passwordHash,
         salt,
+        contactInfo,
+        preferences,
       });
     } catch (error) {
       // Two registrations can pass the check above; the database lets one win.
@@ -241,6 +258,36 @@ export class AuthService {
   public async getUserById(id: string): Promise<User | null> {
     const stored = await this.store.findById(id);
     return stored ? this.sanitizeUser(stored) : null;
+  }
+
+  /**
+   * Retrieves a UserProfile by user ID or email address.
+   */
+  public async getUserProfile(identifier: string): Promise<UserProfile | null> {
+    if (identifier.includes("@")) {
+      return this.store.findProfileByEmail(identifier);
+    }
+    return (
+      (await this.store.findProfileByUserId(identifier)) ||
+      (await this.store.findProfileByEmail(identifier))
+    );
+  }
+
+  /**
+   * Updates an existing UserProfile by user ID or email address.
+   */
+  public async updateUserProfile(
+    identifier: string,
+    data: UpdateUserProfileInput
+  ): Promise<UserProfile> {
+    return this.store.updateProfile(identifier, data);
+  }
+
+  /**
+   * Returns the underlying UserStore.
+   */
+  public getStore(): UserStore {
+    return this.store;
   }
 }
 

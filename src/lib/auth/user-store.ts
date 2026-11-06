@@ -7,7 +7,13 @@ import {
   transaction,
 } from "@/server/db/connection";
 import type { StoredUser, UserRole } from "@/types/auth";
+import type {
+  UpdateUserProfileInput,
+  UserProfile,
+  UserPreferences,
+} from "@/server/db/types";
 import { generateSalt, hashPassword } from "./crypto";
+import { UserProfileRepository } from "@/server/db/repositories/user-profile-repository";
 
 /** The email is already registered; the database's unique constraint refused it. */
 export class DuplicateEmailError extends Error {
@@ -55,6 +61,33 @@ function insertUser(db: Database, user: StoredUser) {
     user.role,
     user.createdAt,
     user.updatedAt,
+  );
+}
+
+function insertProfile(db: Database, user: StoredUser) {
+  const profileId = `prof_${user.id.replace("usr_", "")}`;
+  const insert = db.prepare(
+    `INSERT OR IGNORE INTO user_profiles
+       (id, user_id, email, full_name, contact_info, preferences, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  );
+  insert.run(
+    profileId,
+    user.id,
+    user.email,
+    user.name,
+    user.email === "admin@queuesmart.com"
+      ? "+1 (713) 743-2255"
+      : user.email === "alex@example.com"
+      ? "+1 (713) 555-0199"
+      : null,
+    JSON.stringify({
+      emailNotifications: true,
+      smsNotifications: user.email === "alex@example.com",
+      theme: user.email === "admin@queuesmart.com" ? "dark" : "system",
+    }),
+    user.createdAt,
+    user.updatedAt
   );
 }
 
@@ -143,13 +176,17 @@ export function seedUsers(db: Database) {
   if (countUsers(db) > 0) return;
   const users = hashedDemoUsers();
   transaction(db, () => {
-    for (const user of users) insertUser(db, user);
+    for (const user of users) {
+      insertUser(db, user);
+      insertProfile(db, user);
+    }
   });
 }
 
 /**
- * Accounts in the `user_credentials` table. The default store connects on first
- * use, so importing this module does not open the database (as during a build).
+ * Accounts in the `user_credentials` and `user_profiles` table.
+ * The default store connects on first use, so importing this module does not open
+ * the database (as during a build).
  */
 export class UserStore {
   private connection?: Database;
@@ -165,10 +202,10 @@ export class UserStore {
   }
 
   /**
-   * Removes every account. Fails while queue entries still refer to one, since
-   * visits must not lose their user.
+   * Removes every account and profile.
    */
   public reset(): void {
+    this.db.exec("DELETE FROM user_profiles");
     this.db.exec("DELETE FROM user_credentials");
   }
 
@@ -201,6 +238,7 @@ export class UserStore {
 
   /**
    * Saves a new user, or throws DuplicateEmailError if the email is taken.
+   * Also creates the corresponding UserProfile record with foreign keys.
    */
   public async create(data: {
     name: string;
@@ -208,6 +246,8 @@ export class UserStore {
     role: UserRole;
     passwordHash: string;
     salt: string;
+    contactInfo?: string | null;
+    preferences?: UserPreferences | null;
   }): Promise<StoredUser> {
     const now = new Date().toISOString();
     const email = data.email.trim().toLowerCase();
@@ -223,6 +263,24 @@ export class UserStore {
     };
     try {
       insertUser(this.db, user);
+
+      const profileRepo = new UserProfileRepository(this.db);
+      profileRepo.upsert({
+        userId: user.id,
+        email,
+        fullName: user.name,
+        contactInfo: data.contactInfo !== undefined ? data.contactInfo : null,
+        preferences:
+          data.preferences !== undefined
+            ? data.preferences
+            : {
+                emailNotifications: true,
+                smsNotifications: false,
+                theme: "system",
+              },
+        createdAt: now,
+        updatedAt: now,
+      });
     } catch (error) {
       if (
         sqliteErrorCode(error) === SQLITE_CONSTRAINT_UNIQUE &&
@@ -250,6 +308,48 @@ export class UserStore {
    */
   public async count(): Promise<number> {
     return countUsers(this.db);
+  }
+
+  /**
+   * Finds a UserProfile by email.
+   */
+  public async findProfileByEmail(email: string): Promise<UserProfile | null> {
+    const profileRepo = new UserProfileRepository(this.db);
+    return profileRepo.findByEmail(email);
+  }
+
+  /**
+   * Finds a UserProfile by user ID.
+   */
+  public async findProfileByUserId(userId: string): Promise<UserProfile | null> {
+    const profileRepo = new UserProfileRepository(this.db);
+    return profileRepo.findByUserId(userId);
+  }
+
+  /**
+   * Updates a UserProfile by profile ID, email, or user ID.
+   */
+  public async updateProfile(
+    identifier: string,
+    data: UpdateUserProfileInput
+  ): Promise<UserProfile> {
+    const profileRepo = new UserProfileRepository(this.db);
+    return profileRepo.update(identifier, data);
+  }
+
+  /**
+   * Lists all user profiles.
+   */
+  public async listAllProfiles(): Promise<UserProfile[]> {
+    const profileRepo = new UserProfileRepository(this.db);
+    return profileRepo.listAll();
+  }
+
+  /**
+   * Returns the underlying SQLite database instance.
+   */
+  public getDatabase(): Database {
+    return this.db;
   }
 }
 
