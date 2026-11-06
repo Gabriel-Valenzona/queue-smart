@@ -1,7 +1,7 @@
 import { moduleHandler } from "@/server/modules/http";
 import {
   dismissNotification,
-  getNotificationStore,
+  getNotificationDatabase,
   listNotifications,
   setNotificationRead,
   validateReadUpdate,
@@ -19,9 +19,9 @@ export async function PATCH(request: Request, ctx: Context) {
   return moduleHandler(request, async (user) => {
     const id = await readId(ctx);
     const { read } = validateReadUpdate(await readJson(request));
-    const store = getNotificationStore();
-    const notification = setNotificationRead(store, user.id, id, read);
-    const { unreadCount, total } = listNotifications(store, user.id);
+    const db = getNotificationDatabase();
+    const notification = setNotificationRead(db, user.id, id, read);
+    const { unreadCount, total } = listNotifications(db, user.id);
     return Response.json({ notification, unreadCount, total });
   });
 }
@@ -30,9 +30,9 @@ export async function PATCH(request: Request, ctx: Context) {
 export async function DELETE(request: Request, ctx: Context) {
   return moduleHandler(request, async (user) => {
     const id = await readId(ctx);
-    const store = getNotificationStore();
-    dismissNotification(store, user.id, id);
-    const { unreadCount, total } = listNotifications(store, user.id);
+    const db = getNotificationDatabase();
+    dismissNotification(db, user.id, id);
+    const { unreadCount, total } = listNotifications(db, user.id);
     return Response.json({ dismissed: id, unreadCount, total });
   });
 }

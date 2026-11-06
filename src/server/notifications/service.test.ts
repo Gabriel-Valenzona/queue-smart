@@ -1,4 +1,6 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { seedUsers } from "@/lib/auth/user-store";
+import { openDatabase, type Database } from "@/server/db/connection";
 import { ModuleError } from "@/server/modules/errors";
 import {
   defaultPreferences,
@@ -17,15 +19,12 @@ import {
   setNotificationRead,
   updatePreferences,
 } from "./service";
-import {
-  createEmptyNotificationStore,
-  createSeedNotificationStore,
-  type NotificationStore,
-} from "./store";
+import { seedNotifications } from "./store";
 import type { NotificationInput } from "./types";
 
 const alex = "usr_alex_002";
 const jordan = "usr_demo_003";
+const admin = "usr_admin_001";
 const at = (iso: string) => () => new Date(iso);
 
 function input(patch: Partial<NotificationInput> = {}): NotificationInput {
@@ -40,16 +39,23 @@ function input(patch: Partial<NotificationInput> = {}): NotificationInput {
   };
 }
 
-let store: NotificationStore;
+const titles = (db: Database, userId: string) =>
+  listNotifications(db, userId).notifications.map((item) => item.title);
+
+let db: Database;
 beforeEach(() => {
-  store = createEmptyNotificationStore();
+  db = openDatabase(":memory:");
+  seedUsers(db);
+});
+afterEach(() => {
+  db.close();
 });
 
 describe("createNotification", () => {
   it("stores unread notifications newest first", () => {
-    createNotification(store, input({ title: "First" }), at("2026-10-23T12:00:00Z"));
+    createNotification(db, input({ title: "First" }), at("2026-10-23T12:00:00Z"));
     const second = createNotification(
-      store,
+      db,
       input({ title: "Second" }),
       at("2026-10-23T12:05:00Z"),
     );
@@ -60,15 +66,12 @@ describe("createNotification", () => {
       silent: false,
       createdAt: "2026-10-23T12:05:00.000Z",
     });
-    expect(store.notifications.map((item) => item.title)).toEqual([
-      "Second",
-      "First",
-    ]);
+    expect(titles(db, alex)).toEqual(["Second", "First"]);
   });
 
   it("keeps a supplied timestamp, such as when a visit completed", () => {
     const stored = createNotification(
-      store,
+      db,
       input({ createdAt: "2026-10-23T11:00:00.000Z" }),
       at("2026-10-23T12:00:00Z"),
     );
@@ -76,87 +79,102 @@ describe("createNotification", () => {
   });
 
   it("gives every notification its own id", () => {
-    const ids = [1, 2, 3].map(() => createNotification(store, input())?.id);
+    const ids = [1, 2, 3].map(() => createNotification(db, input())?.id);
     expect(new Set(ids).size).toBe(3);
     expect(ids[0]).toMatch(/^ntf_/);
   });
 
-  it("delivers nothing for a category the recipient switched off", () => {
-    updatePreferences(store, alex, { categories: { "queue-update": false } });
-    expect(createNotification(store, input())).toBeNull();
+  it("keeps the service name, and omits it when there is none", () => {
+    expect(createNotification(db, input())?.service).toBe("Student services");
     expect(
-      createNotification(store, input({ category: "status-change" })),
-    ).not.toBeNull();
-    expect(store.notifications).toHaveLength(1);
+      createNotification(db, input({ service: undefined, category: "system" })),
+    ).not.toHaveProperty("service");
+  });
+
+  it("delivers nothing for a category the recipient switched off", () => {
+    updatePreferences(db, alex, { categories: { "queue-update": false } });
+    expect(createNotification(db, input())).toBeNull();
+    expect(createNotification(db, input({ category: "status-change" }))).not.toBeNull();
+    expect(listNotifications(db, alex).total).toBe(1);
   });
 
   it("still delivers system messages when every category is switched off", () => {
-    updatePreferences(store, alex, {
+    updatePreferences(db, alex, {
       categories: {
         "queue-update": false,
         "status-change": false,
         service: false,
       },
     });
-    expect(createNotification(store, input({ category: "system" }))).not.toBeNull();
+    expect(createNotification(db, input({ category: "system" }))).not.toBeNull();
   });
 
   it("keeps quiet-hours notifications in the feed without announcing them", () => {
-    updatePreferences(store, alex, {
+    updatePreferences(db, alex, {
       quietHours: { enabled: true, start: "21:00", end: "07:00" },
     });
+    expect(createNotification(db, input(), at("2026-10-23T22:30:00Z"))?.silent).toBe(
+      true,
+    );
+    expect(createNotification(db, input(), at("2026-10-23T09:00:00Z"))?.silent).toBe(
+      false,
+    );
+    // Newest first: the 22:30 notification is the quiet one.
     expect(
-      createNotification(store, input(), at("2026-10-23T22:30:00Z"))?.silent,
-    ).toBe(true);
-    expect(
-      createNotification(store, input(), at("2026-10-23T09:00:00Z"))?.silent,
-    ).toBe(false);
+      listNotifications(db, alex).notifications.map((item) => item.silent),
+    ).toEqual([true, false]);
   });
 
   it("delivers a batch and reports only what was stored", () => {
-    updatePreferences(store, alex, { categories: { service: false } });
-    const stored = createNotifications(store, [
+    updatePreferences(db, alex, { categories: { service: false } });
+    const stored = createNotifications(db, [
       input(),
       input({ category: "service" }),
       input({ userId: jordan, category: "service" }),
     ]);
     expect(stored.map((item) => item.userId)).toEqual([alex, jordan]);
   });
+
+  it("refuses a notification for an account that does not exist", () => {
+    expect(() => createNotification(db, input({ userId: "usr_ghost" }))).toThrowError(
+      /FOREIGN KEY/i,
+    );
+  });
 });
 
 describe("listNotifications", () => {
   beforeEach(() => {
-    store = createSeedNotificationStore();
+    seedNotifications(db);
   });
 
   it("returns one account feed with its unread count", () => {
-    const feed = listNotifications(store, alex);
+    const feed = listNotifications(db, alex);
     expect(feed.notifications).toHaveLength(2);
     expect(feed).toMatchObject({ unreadCount: 1, total: 2 });
     expect(feed.notifications.every((item) => item.userId === alex)).toBe(true);
   });
 
   it("filters by unread and by category without changing the counts", () => {
-    expect(listNotifications(store, alex, { filter: "unread" })).toMatchObject({
+    expect(listNotifications(db, alex, { filter: "unread" })).toMatchObject({
       unreadCount: 1,
       total: 2,
     });
     expect(
-      listNotifications(store, alex, { filter: "unread" }).notifications,
+      listNotifications(db, alex, { filter: "unread" }).notifications,
     ).toHaveLength(1);
     expect(
-      listNotifications(store, alex, { filter: "status-change" }).notifications,
+      listNotifications(db, alex, { filter: "status-change" }).notifications,
     ).toHaveLength(0);
   });
 
   it("limits the rows it returns", () => {
     expect(
-      listNotifications(store, alex, { filter: "all", limit: 1 }).notifications,
-    ).toHaveLength(1);
+      listNotifications(db, alex, { filter: "all", limit: 1 }).notifications,
+    ).toEqual([expect.objectContaining({ id: "seed-note-2" })]);
   });
 
   it("is empty for an account with no notifications", () => {
-    expect(listNotifications(store, "usr_unknown")).toEqual({
+    expect(listNotifications(db, jordan)).toEqual({
       notifications: [],
       unreadCount: 0,
       total: 0,
@@ -166,39 +184,39 @@ describe("listNotifications", () => {
 
 describe("read state and dismissal", () => {
   beforeEach(() => {
-    store = createSeedNotificationStore();
+    seedNotifications(db);
   });
 
   it("marks one notification read and unread again", () => {
-    expect(setNotificationRead(store, alex, "seed-note-2", true).read).toBe(true);
-    expect(listNotifications(store, alex).unreadCount).toBe(0);
-    expect(setNotificationRead(store, alex, "seed-note-2", false).read).toBe(false);
-    expect(listNotifications(store, alex).unreadCount).toBe(1);
+    expect(setNotificationRead(db, alex, "seed-note-2", true).read).toBe(true);
+    expect(listNotifications(db, alex).unreadCount).toBe(0);
+    expect(setNotificationRead(db, alex, "seed-note-2", false).read).toBe(false);
+    expect(listNotifications(db, alex).unreadCount).toBe(1);
   });
 
   it("marks everything read and reports how many changed", () => {
-    expect(markAllRead(store, alex)).toBe(1);
-    expect(markAllRead(store, alex)).toBe(0);
-    expect(listNotifications(store, alex).unreadCount).toBe(0);
+    expect(markAllRead(db, alex)).toBe(1);
+    expect(markAllRead(db, alex)).toBe(0);
+    expect(listNotifications(db, alex).unreadCount).toBe(0);
   });
 
   it("dismisses one notification and clears the rest", () => {
-    dismissNotification(store, alex, "seed-note-1");
-    expect(listNotifications(store, alex).total).toBe(1);
-    expect(clearNotifications(store, alex)).toBe(1);
-    expect(listNotifications(store, alex).total).toBe(0);
+    dismissNotification(db, alex, "seed-note-1");
+    expect(listNotifications(db, alex).total).toBe(1);
+    expect(clearNotifications(db, alex)).toBe(1);
+    expect(listNotifications(db, alex).total).toBe(0);
   });
 
   it("leaves other accounts untouched when one clears its feed", () => {
-    clearNotifications(store, alex);
-    expect(listNotifications(store, "usr_admin_001").total).toBe(1);
+    clearNotifications(db, alex);
+    expect(listNotifications(db, admin).total).toBe(1);
   });
 
   it("reports another account notification as missing", () => {
     for (const run of [
-      () => setNotificationRead(store, alex, "seed-note-admin", true),
-      () => dismissNotification(store, alex, "seed-note-admin"),
-      () => setNotificationRead(store, alex, "ntf_missing", true),
+      () => setNotificationRead(db, alex, "seed-note-admin", true),
+      () => dismissNotification(db, alex, "seed-note-admin"),
+      () => setNotificationRead(db, alex, "ntf_missing", true),
     ]) {
       expect(run).toThrowError(ModuleError);
       try {
@@ -210,18 +228,18 @@ describe("read state and dismissal", () => {
         });
       }
     }
-    expect(listNotifications(store, "usr_admin_001").total).toBe(1);
+    expect(listNotifications(db, admin).total).toBe(1);
   });
 });
 
 describe("preferences", () => {
   it("starts with every category on and quiet hours off", () => {
-    expect(getPreferences(store, alex)).toEqual(defaultPreferences());
+    expect(getPreferences(db, alex)).toEqual(defaultPreferences());
   });
 
   it("changes only the settings a request sends", () => {
-    updatePreferences(store, alex, { categories: { service: false } });
-    const updated = updatePreferences(store, alex, {
+    updatePreferences(db, alex, { categories: { service: false } });
+    const updated = updatePreferences(db, alex, {
       quietHours: { enabled: true, start: "22:00", end: "06:00" },
     });
     expect(updated.categories).toMatchObject({
@@ -233,6 +251,7 @@ describe("preferences", () => {
       start: "22:00",
       end: "06:00",
     });
+    expect(getPreferences(db, alex)).toEqual(updated);
   });
 
   it("keeps system messages switched on", () => {
@@ -244,8 +263,14 @@ describe("preferences", () => {
   });
 
   it("does not affect other accounts", () => {
-    updatePreferences(store, alex, { categories: { "queue-update": false } });
-    expect(getPreferences(store, jordan).categories["queue-update"]).toBe(true);
+    updatePreferences(db, alex, { categories: { "queue-update": false } });
+    expect(getPreferences(db, jordan).categories["queue-update"]).toBe(true);
+  });
+
+  it("refuses settings for an account that does not exist", () => {
+    expect(() =>
+      updatePreferences(db, "usr_ghost", { categories: { service: false } }),
+    ).toThrowError(/FOREIGN KEY/i);
   });
 });
 

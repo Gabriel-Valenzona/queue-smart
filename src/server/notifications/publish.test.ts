@@ -1,50 +1,119 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { getDatabase } from "@/server/db/connection";
 import { resetQueueStore } from "@/server/queue/store";
 import { publishQueueNotifications } from "./publish";
-import { createEmptyNotificationStore, type NotificationStore } from "./store";
+import { readWaitBaselines } from "./repository";
+import { listNotifications } from "./service";
+import { resetNotificationStore } from "./store";
+
+/**
+ * Publishing writes to the shared database, so these tests use it (vitest
+ * points every worker at its own in-memory database) and reset it each time.
+ */
+let db = getDatabase();
 
 beforeEach(() => {
   resetQueueStore();
+  db = resetNotificationStore();
 });
+
+const studentServices = { events: [], serviceIds: ["student-services"], db };
 
 describe("publishQueueNotifications", () => {
   it("stores what a change raises for the accounts it affects", async () => {
-    const store = createEmptyNotificationStore();
     const created = await publishQueueNotifications({
-      events: [],
-      serviceIds: ["student-services"],
+      ...studentServices,
       actorId: "usr_admin_001",
-      store,
+      db,
     });
     expect(created.map((item) => [item.userId, item.title, item.detail])).toEqual([
-      ["usr_demo_003", "Estimated wait updated", "Student services: position 1, about 5 minutes."],
-      ["taylor-nguyen", "Estimated wait updated", "Student services: position 2, about 10 minutes."],
-      ["usr_alex_002", "Estimated wait updated", "Student services: position 3, about 15 minutes."],
+      [
+        "usr_demo_003",
+        "Estimated wait updated",
+        "Student services: position 1, about 5 minutes.",
+      ],
+      [
+        "taylor-nguyen",
+        "Estimated wait updated",
+        "Student services: position 2, about 10 minutes.",
+      ],
+      [
+        "usr_alex_002",
+        "Estimated wait updated",
+        "Student services: position 3, about 15 minutes.",
+      ],
     ]);
-    expect(store.notifications).toHaveLength(3);
-    expect(Object.values(store.waitBaselines)).toEqual([5, 10, 15]);
+    // Each delivery is readable back from the recipient's own feed.
+    expect(listNotifications(db, "usr_demo_003").notifications).toEqual([
+      expect.objectContaining({ title: "Estimated wait updated", read: false }),
+    ]);
   });
 
-  it("does not announce the same estimate twice", async () => {
-    const store = createEmptyNotificationStore();
-    const options = { events: [], serviceIds: ["student-services"], store };
-    await publishQueueNotifications(options);
-    await expect(publishQueueNotifications(options)).resolves.toEqual([]);
-    expect(store.notifications).toHaveLength(3);
+  it("saves the estimates it announced, keyed by queue entry", async () => {
+    await publishQueueNotifications({ ...studentServices, db });
+    expect(readWaitBaselines(db)).toEqual({
+      "seed-1": 5,
+      "seed-2": 10,
+      "seed-3": 15,
+    });
+  });
+
+  it("does not announce the same estimate twice, even after a restart", async () => {
+    await publishQueueNotifications({ ...studentServices, db });
+    const before = listNotifications(db, "usr_alex_002").total;
+    // A new call reads the saved baselines, as a restarted server would.
+    await expect(
+      publishQueueNotifications({ ...studentServices, db }),
+    ).resolves.toEqual([]);
+    expect(listNotifications(db, "usr_alex_002").total).toBe(before);
+  });
+
+  it("forgets the baseline of an entry that has left the queue", async () => {
+    await publishQueueNotifications({ ...studentServices, db });
+    const { serveNext } = await import("@/server/queue/queueService");
+    const { getQueueStore } = await import("@/server/queue/store");
+    const { events } = serveNext(getQueueStore(), "student-services");
+    await publishQueueNotifications({
+      events,
+      serviceIds: ["student-services"],
+      actorId: "usr_admin_001",
+      db,
+    });
+    expect(Object.keys(readWaitBaselines(db))).toEqual(["seed-2", "seed-3"]);
   });
 
   it("never fails a queue operation when delivery breaks", async () => {
-    // A frozen store makes the write throw, standing in for any delivery fault.
-    const store = Object.freeze(createEmptyNotificationStore()) as NotificationStore;
+    const broken = {
+      prepare: () => {
+        throw new Error("database is gone");
+      },
+      exec: () => {
+        throw new Error("database is gone");
+      },
+    } as unknown as typeof db;
     const logged = vi.spyOn(console, "error").mockImplementation(() => {});
     await expect(
       publishQueueNotifications({
         events: [],
         serviceIds: ["student-services"],
-        store,
+        db: broken,
       }),
     ).resolves.toEqual([]);
     expect(logged).toHaveBeenCalled();
+    logged.mockRestore();
+  });
+
+  it("stores nothing when one delivery in a batch fails", async () => {
+    const { getQueueStore } = await import("@/server/queue/store");
+    const store = getQueueStore();
+    // An entry naming an account that no longer exists breaks its delivery.
+    store.queues["student-services"][0].userId = "usr_ghost";
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(
+      publishQueueNotifications({ ...studentServices, db }),
+    ).resolves.toEqual([]);
+    expect(listNotifications(db, "usr_alex_002").total).toBe(2);
+    expect(readWaitBaselines(db)).toEqual({});
     logged.mockRestore();
   });
 });

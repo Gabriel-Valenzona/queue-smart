@@ -18,7 +18,7 @@ Available routes:
 - `/notifications` — independent notification component demo with sample feeds, filters, and settings.
 - `/ui-kit` — interactive shared-component gallery.
 
-Authentication, services, queues, history, and notifications are served by the API routes under `src/app/api`. Data lives in in-memory stores on the server, so administrator actions do reach the user screens, and everything resets when the server restarts; a database arrives in Assignment 4.
+Authentication, services, queues, history, and notifications are served by the API routes under `src/app/api`, over a SQLite database (Node's built-in driver) at `data/queuesmart.sqlite`. Set `QUEUESMART_DB_PATH` to use another file, or `:memory:`; tests always use their own in-memory database. The file is created and seeded with the demo accounts, queues, and notifications on first use, so administrator actions reach the user screens and saved data survives a restart. Services are still held in memory.
 
 ## User demo
 
