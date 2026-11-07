@@ -12,14 +12,21 @@ import { authService } from "../../src/lib/auth/auth-service";
 import { getDatabase, seedDatabase } from "../../src/server/db";
 import { resetQueueStore } from "../../src/server/queue/store";
 
-beforeEach(() => {
+let adminToken: string;
+beforeEach(async () => {
   const db = getDatabase();
   db.exec(`DELETE FROM queue_entries; DELETE FROM queues;
     DELETE FROM notifications; DELETE FROM user_profiles;
     DELETE FROM user_credentials; DELETE FROM services;`);
   seedDatabase(db);
   resetQueueStore();
+  adminToken = authService.createSessionToken((await authService.getUserById("usr_admin_001"))!);
 });
+function serviceRequest(url: string, init?: RequestInit) {
+  const headers = new Headers(init?.headers);
+  headers.set("Authorization", `Bearer ${adminToken}`);
+  return new Request(url, { ...init, headers });
+}
 
 describe("Database Backend API Routes - UserProfile & Service", () => {
   describe("UserProfile API: /api/user/profile", () => {
@@ -126,7 +133,7 @@ describe("Database Backend API Routes - UserProfile & Service", () => {
 
   describe("Service API: /api/services", () => {
     it("GET /api/services should list all services from SQLite", async () => {
-      const response = await getServicesHandler();
+      const response = await getServicesHandler(serviceRequest("http://localhost:3000/api/services"));
       assert.equal(response.status, 200);
 
       const json = await response.json();
@@ -140,7 +147,7 @@ describe("Database Backend API Routes - UserProfile & Service", () => {
 
     it("POST /api/services should create a new service in SQLite", async () => {
       const testServiceId = `test-service-${Date.now()}`;
-      const request = new Request("http://localhost:3000/api/services", {
+      const request = serviceRequest("http://localhost:3000/api/services", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -165,7 +172,7 @@ describe("Database Backend API Routes - UserProfile & Service", () => {
     });
 
     it("POST /api/services should reject missing required fields with 400", async () => {
-      const request = new Request("http://localhost:3000/api/services", {
+      const request = serviceRequest("http://localhost:3000/api/services", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -186,7 +193,7 @@ describe("Database Backend API Routes - UserProfile & Service", () => {
     });
 
     it("POST /api/services should return 409 Conflict for duplicate Service ID", async () => {
-      const request = new Request("http://localhost:3000/api/services", {
+      const request = serviceRequest("http://localhost:3000/api/services", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -209,7 +216,7 @@ describe("Database Backend API Routes - UserProfile & Service", () => {
 
   describe("Single Service API: /api/services/[serviceId]", () => {
     it("GET /api/services/[serviceId] should retrieve single service", async () => {
-      const request = new Request("http://localhost:3000/api/services/student-services");
+      const request = serviceRequest("http://localhost:3000/api/services/student-services");
       const ctx = { params: Promise.resolve({ serviceId: "student-services" }) };
 
       const response = await getSingleServiceHandler(request, ctx);
@@ -222,7 +229,7 @@ describe("Database Backend API Routes - UserProfile & Service", () => {
     });
 
     it("GET /api/services/[serviceId] should return 404 for unknown service", async () => {
-      const request = new Request("http://localhost:3000/api/services/unknown-xyz");
+      const request = serviceRequest("http://localhost:3000/api/services/unknown-xyz");
       const ctx = { params: Promise.resolve({ serviceId: "unknown-xyz" }) };
 
       const response = await getSingleServiceHandler(request, ctx);
@@ -232,7 +239,7 @@ describe("Database Backend API Routes - UserProfile & Service", () => {
     it("PUT /api/services/[serviceId] should update service attributes", async () => {
       const updateTestId = `service-for-update-${Date.now()}`;
       // Create dedicated service to update
-      const createReq = new Request("http://localhost:3000/api/services", {
+      const createReq = serviceRequest("http://localhost:3000/api/services", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -245,7 +252,7 @@ describe("Database Backend API Routes - UserProfile & Service", () => {
       });
       await postServicesHandler(createReq);
 
-      const request = new Request(`http://localhost:3000/api/services/${updateTestId}`, {
+      const request = serviceRequest(`http://localhost:3000/api/services/${updateTestId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -269,7 +276,7 @@ describe("Database Backend API Routes - UserProfile & Service", () => {
     it("DELETE /api/services/[serviceId] should delete service", async () => {
       // First create one to delete
       const delId = `temp-delete-${Date.now()}`;
-      const createReq = new Request("http://localhost:3000/api/services", {
+      const createReq = serviceRequest("http://localhost:3000/api/services", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -283,7 +290,7 @@ describe("Database Backend API Routes - UserProfile & Service", () => {
       await postServicesHandler(createReq);
 
       // Now delete it
-      const delReq = new Request(`http://localhost:3000/api/services/${delId}`, {
+      const delReq = serviceRequest(`http://localhost:3000/api/services/${delId}`, {
         method: "DELETE",
       });
       const ctx = { params: Promise.resolve({ serviceId: delId }) };

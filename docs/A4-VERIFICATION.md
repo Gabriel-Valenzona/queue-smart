@@ -82,3 +82,20 @@ failures and regressions must be resolved before committing.
   A server restart with the same temporary database retained Open in the UI/API.
   Screenshots: `/tmp/queuesmart-validator-m3-toggle.png` and
   `/tmp/queuesmart-validator-m3-restart.png`.
+
+### 4 — Service permissions
+
+- All service routes use the existing session/role wrapper. User/Administrator
+  reads and Administrator-only mutations preserve cookie/Bearer authentication.
+  Authorization precedes parsing/lookup; every response gets `no-store`.
+- Positive workflows and negative cases cover all methods, missing/invalid/
+  removed sessions, request/token role spoofing, and unchanged SQL/runtime data.
+- Primary focused tests: 60 passed. Complete coverage run: **475/475 passed**,
+  resolving every baseline failure. TypeScript, ESLint and diff checks passed.
+- Interim complete-suite coverage (56 substantive modules): 93% statements,
+  90.04% branches, 95.19% functions, 92.87% lines. Remaining work addresses
+  meaningful persistence gaps despite already exceeding the aggregate target.
+- Independent validator: **PASS**, 62 focused tests passed; live HTTP checks
+  confirmed all six endpoints return 401 without sessions, User reads return 200
+  and mutations 403, and Administrator create/update/delete succeeds. Every
+  response had `no-store`; rejected mutations left stored services unchanged.

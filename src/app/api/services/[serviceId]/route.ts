@@ -1,3 +1,4 @@
+import { moduleHandler } from "@/server/modules/http";
 import { validateId } from "@/server/queue/validation";
 /**
  * Single Service API Handler
@@ -18,34 +19,36 @@ type RouteContext = {
  * GET /api/services/[serviceId]
  */
 export async function GET(
-  _request: Request,
+  request: Request,
   ctx: RouteContext
 ) {
-  try {
-    const { serviceId } = await ctx.params;
-    validateId(serviceId, "serviceId");
-    const service = serviceRepository.findById(serviceId);
+  return moduleHandler(request, async () => {
+    try {
+      const { serviceId } = await ctx.params;
+      validateId(serviceId, "serviceId");
+      const service = serviceRepository.findById(serviceId);
 
-    if (!service) {
+      if (!service) {
+        return serviceResponse(
+          {
+            success: false,
+            message: `Service with ID "${serviceId}" was not found.`,
+          },
+          { status: 404 }
+        );
+      }
+
       return serviceResponse(
         {
-          success: false,
-          message: `Service with ID "${serviceId}" was not found.`,
+          success: true,
+          service,
         },
-        { status: 404 }
+        { status: 200 }
       );
+    } catch (error) {
+      return serviceFailure(error);
     }
-
-    return serviceResponse(
-      {
-        success: true,
-        service,
-      },
-      { status: 200 }
-    );
-  } catch (error) {
-    return serviceFailure(error);
-  }
+  }, false);
 }
 
 /**
@@ -55,14 +58,14 @@ export async function PUT(
   request: Request,
   ctx: RouteContext
 ) {
-  return handleUpdate(request, ctx);
+  return moduleHandler(request, () => handleUpdate(request, ctx), true);
 }
 
 export async function PATCH(
   request: Request,
   ctx: RouteContext
 ) {
-  return handleUpdate(request, ctx);
+  return moduleHandler(request, () => handleUpdate(request, ctx), true);
 }
 
 async function handleUpdate(
@@ -200,36 +203,38 @@ async function handleUpdate(
  * DELETE /api/services/[serviceId]
  */
 export async function DELETE(
-  _request: Request,
+  request: Request,
   ctx: RouteContext
 ) {
-  try {
-    const { serviceId } = await ctx.params;
-    validateId(serviceId, "serviceId");
-    const existing = serviceRepository.findById(serviceId);
+  return moduleHandler(request, async () => {
+    try {
+      const { serviceId } = await ctx.params;
+      validateId(serviceId, "serviceId");
+      const existing = serviceRepository.findById(serviceId);
 
-    if (!existing) {
+      if (!existing) {
+        return serviceResponse(
+          {
+            success: false,
+            message: `Service with ID "${serviceId}" was not found.`,
+          },
+          { status: 404 }
+        );
+      }
+
+      serviceRepository.delete(serviceId);
+
+      syncQueueServices(getQueueStore());
+
       return serviceResponse(
         {
-          success: false,
-          message: `Service with ID "${serviceId}" was not found.`,
+          success: true,
+          message: `Service "${serviceId}" was deleted successfully.`,
         },
-        { status: 404 }
+        { status: 200 }
       );
+    } catch (error) {
+      return serviceFailure(error);
     }
-
-    serviceRepository.delete(serviceId);
-
-    syncQueueServices(getQueueStore());
-
-    return serviceResponse(
-      {
-        success: true,
-        message: `Service "${serviceId}" was deleted successfully.`,
-      },
-      { status: 200 }
-    );
-  } catch (error) {
-    return serviceFailure(error);
-  }
+  }, true);
 }
