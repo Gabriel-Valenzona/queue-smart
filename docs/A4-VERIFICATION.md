@@ -151,3 +151,14 @@ failures and regressions must be resolved before committing.
 - Primary and independent notification/API runs: **121/121 passed**.
   Independent validator: **PASS** on persisted assertions, rollback/retry,
   isolation, cleanup, focused ESLint and diff checks.
+
+### 5e — Initialization and transaction gaps
+
+- Added all-eight-table/view/index checks, schema idempotence without erasing
+  saved records, disabled seeding, seed-once startup with retained edits/queues,
+  foreign-key enforcement, rollback followed by a successful transaction, and
+  configured path precedence. File databases remain in temporary directories;
+  the real default path is inspected only as a string.
+- Primary and independent database suites: **51/51 passed**. TypeScript,
+  ESLint/diff checks and environment/resource cleanup review passed.
+  Independent validator: **PASS**.
