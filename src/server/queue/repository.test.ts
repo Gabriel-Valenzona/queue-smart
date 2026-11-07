@@ -10,6 +10,7 @@ import {
   sqliteErrorCode,
   transaction,
 } from "@/server/db/connection";
+import { ServiceRepository } from "@/server/db/repositories/service-repository";
 import { QueueError } from "./errors";
 import {
   getParticipation,
@@ -310,6 +311,23 @@ describe("write-through failures", () => {
     expect(readQueueState(db, [advising]).queues.advising).toHaveLength(1);
   });
 
+  it("restores the line and history when a completion write fails", () => {
+    join("a");
+    join("b");
+    const before = structuredClone(store);
+    const rows = db.prepare("SELECT * FROM queue_entries ORDER BY id").all();
+    db.exec(`CREATE TRIGGER reject_completion BEFORE UPDATE ON queue_entries
+      WHEN NEW.status = 'served' BEGIN SELECT RAISE(ABORT, 'completion failed'); END;`);
+    try {
+      expect(() => serveNext(store, "advising")).toThrow(/completion failed/);
+      expect(store).toEqual(before);
+      expect(db.prepare("SELECT * FROM queue_entries ORDER BY id").all()).toEqual(rows);
+      expect(reload()).toEqual(before);
+    } finally {
+      db.exec("DROP TRIGGER reject_completion");
+    }
+  });
+
   it("does not translate errors that are not SQLite errors", () => {
     expect(sqliteErrorCode(new Error("plain"))).toBeUndefined();
     expect(sqliteErrorCode("text")).toBeUndefined();
@@ -324,20 +342,23 @@ describe("write-through failures", () => {
 describe("seeding and restarts", () => {
   it("seeds the demo queues once, and keeps later changes", () => {
     const seeded = openDatabase(":memory:");
-    seedQueues(seeded);
-    const first = loadQueueStore(seeded);
-    expect(getQueue(first, "student-services").entries.map((entry) => entry.id)).toEqual([
-      "seed-1",
-      "seed-2",
-      "seed-3",
-    ]);
-    serveNext(first, "student-services");
-    seedQueues(seeded);
-    const second = loadQueueStore(seeded);
-    expect(getQueue(second, "student-services").entries).toHaveLength(2);
-    expect(second.services.find((service) => service.id === "academic-advising")?.open).toBe(false);
-    expect(seeded.prepare("SELECT count(*) AS n FROM user_credentials").get()).toEqual({ n: 6 });
-    seeded.close();
+    try {
+      seedQueues(seeded);
+      const first = loadQueueStore(seeded);
+      expect(getQueue(first, "student-services").entries.map((entry) => entry.id)).toEqual([
+        "seed-1",
+        "seed-2",
+        "seed-3",
+      ]);
+      serveNext(first, "student-services");
+      seedQueues(seeded);
+      const second = loadQueueStore(seeded);
+      expect(getQueue(second, "student-services").entries).toHaveLength(2);
+      expect(second.services.find((service) => service.id === "academic-advising")?.open).toBe(false);
+      expect(seeded.prepare("SELECT count(*) AS n FROM user_credentials").get()).toEqual({ n: 6 });
+    } finally {
+      seeded.close();
+    }
   });
 
   it("keeps queue data in the database file across connections", () => {
@@ -345,32 +366,75 @@ describe("seeding and restarts", () => {
     const file = path.join(dir, "nested", "queues.sqlite");
     try {
       const firstDb = openDatabase(file);
-      addUsers(firstDb, "a");
-      const first = loadQueueStore(firstDb, [{ ...advising }]);
-      const entry = joinQueue(first, "advising", {
-        userId: "a",
-        userName: "A",
-        priority: "low",
-      }).entry;
-      firstDb.close();
-
-      const secondDb = openDatabase(file);
-      const second = loadQueueStore(secondDb, [{ ...advising }]);
-      expect(second.queues.advising).toEqual([
-        {
-          id: entry.id,
-          serviceId: "advising",
+      let entry;
+      try {
+        addUsers(firstDb, "a");
+        const first = loadQueueStore(firstDb, [{ ...advising }]);
+        entry = joinQueue(first, "advising", {
           userId: "a",
           userName: "A",
           priority: "low",
-          joinedAt: entry.joinedAt,
-        },
-      ]);
-      secondDb.close();
+        }).entry;
+      } finally {
+        firstDb.close();
+      }
+
+      const secondDb = openDatabase(file);
+      try {
+        const second = loadQueueStore(secondDb, [{ ...advising }]);
+        expect(second.queues.advising).toEqual([
+          {
+            id: entry.id,
+            serviceId: "advising",
+            userId: "a",
+            userName: "A",
+            priority: "low",
+            joinedAt: entry.joinedAt,
+          },
+        ]);
+      } finally {
+        secondDb.close();
+      }
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+  it("retains reordered positions and served/canceled outcomes across a real reconnection", () => {
+    const directory = mkdtempSync(path.join(tmpdir(), "queuesmart-outcomes-"));
+    const file = path.join(directory, "outcomes.sqlite");
+    let connection: Database | undefined;
+    try {
+      connection = openDatabase(file);
+      addUsers(connection, "a", "b", "c");
+      new ServiceRepository(connection).create(advising);
+      const initial = loadQueueStore(connection);
+      const a = joinQueue(initial, "advising", { userId: "a", userName: "A", priority: "medium" }, clock("2026-11-06T12:00:00Z")).entry;
+      const b = joinQueue(initial, "advising", { userId: "b", userName: "B", priority: "high" }, clock("2026-11-06T12:01:00Z")).entry;
+      const c = joinQueue(initial, "advising", { userId: "c", userName: "C", priority: "medium" }, clock("2026-11-06T12:02:00Z")).entry;
+      expect(initial.queues.advising.map(entry => entry.id)).toEqual([b.id, a.id, c.id]);
+      moveEntry(initial, "advising", c.id, "up");
+      expect(initial.queues.advising.map(entry => entry.id)).toEqual([b.id, c.id, a.id]);
+      serveNext(initial, "advising", clock("2026-11-06T13:00:00Z"));
+      leaveQueue(initial, "advising", c.id, clock("2026-11-06T13:01:00Z"));
+      const before = structuredClone(initial);
+      const persisted = connection.prepare("SELECT * FROM queue_entries ORDER BY id").all();
+      connection.close();
+      connection = undefined;
+      connection = openDatabase(file);
+      const fresh = loadQueueStore(connection);
+      expect(fresh).toEqual(before);
+      expect(connection.prepare("SELECT * FROM queue_entries ORDER BY id").all()).toEqual(persisted);
+      expect(getQueue(fresh, "advising").entries).toMatchObject([{ id: a.id, userId: "a", position: 1 }]);
+      expect(fresh.completed).toMatchObject([{ entryId: c.id, outcome: "canceled" }, { entryId: b.id, outcome: "served" }]);
+      joinQueue(fresh, "advising", { userId: "b", userName: "B", priority: "low" });
+      expect(fresh.queues.advising).toHaveLength(2);
+      expect(fresh.completed).toEqual(before.completed);
+      expect(connection.prepare("SELECT status, position FROM queue_entries WHERE id = ?").get(b.id)).toEqual({ status: "served", position: null });
+    } finally {
+      try { connection?.close(); } finally { rmSync(directory, { recursive: true, force: true }); }
+    }
+  });
+
 });
 
 describe("shared connection", () => {

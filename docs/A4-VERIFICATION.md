@@ -125,3 +125,15 @@ failures and regressions must be resolved before committing.
   checks passed. Profile authorization remains outside scope.
 - Independent validator: **PASS**, all 27 focused tests, fixture review, ESLint
   and diff checks passed. No authorization/application changes were made.
+
+### 5c — Queue outcomes and rollback gaps
+
+- Extended existing queue persistence tests to retain priority insertion,
+  administrator reorder, one-based positions, served/canceled history and a
+  subsequent rejoin across real reconnection.
+- A completion-write trigger verifies rollback restores saved rows, runtime
+  order and completed history. Existing memory/file tests now close connections
+  on assertion failures.
+- Primary queue/API suites: 107 passed; TypeScript, ESLint and diff checks passed.
+- Latest repository-only rerun: 23 passed. Independent validator: **PASS**, all
+  107 queue/API tests, cleanup/assertion review, ESLint and diff checks passed.
