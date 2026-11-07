@@ -337,14 +337,17 @@ describe("persistence", () => {
 
   it("keeps notifications, read state, and settings across connections", () => {
     const first = openDatabase(file);
-    seedNotifications(first);
-    insertNotification(first, notification({ id: "ntf_kept" }));
-    updateNotificationStatus(first, alex, "seed-note-2", true);
-    savePreferences(first, alex, {
-      ...defaultPreferences(),
-      quietHours: { enabled: true, start: "21:00", end: "07:00" },
-    });
-    first.close();
+    try {
+      seedNotifications(first);
+      insertNotification(first, notification({ id: "ntf_kept" }));
+      updateNotificationStatus(first, alex, "seed-note-2", true);
+      savePreferences(first, alex, {
+        ...defaultPreferences(),
+        quietHours: { enabled: true, start: "21:00", end: "07:00" },
+      });
+    } finally {
+      first.close();
+    }
 
     const second = openDatabase(file);
     try {
@@ -356,6 +359,47 @@ describe("persistence", () => {
       ]);
       expect(feed.unreadCount).toBe(1);
       expect(readPreferences(second, alex).quietHours.enabled).toBe(true);
+    } finally {
+      second.close();
+    }
+  });
+
+  it("persists wait baselines alongside account-isolated messages, read state and preferences", () => {
+    const first = openDatabase(file);
+    let alexFeed;
+    let adminFeed;
+    let preferences;
+    try {
+      seedQueues(first);
+      seedNotifications(first);
+      saveWaitBaselines(first, { "seed-1": 5, "seed-3": 15 });
+      updateNotificationStatus(first, alex, "seed-note-2", true);
+      deleteNotification(first, alex, "seed-note-1");
+      savePreferences(first, alex, {
+        ...defaultPreferences(),
+        categories: { "queue-update": false, "status-change": true, service: true, system: false },
+        quietHours: { enabled: true, start: "22:30", end: "07:30" },
+      });
+      alexFeed = readFeed(first, alex);
+      adminFeed = readFeed(first, "usr_admin_001");
+      preferences = readPreferences(first, alex);
+      expect(alexFeed.unreadCount).toBe(0);
+      expect(adminFeed.unreadCount).toBe(1);
+    } finally {
+      first.close();
+    }
+    const second = openDatabase(file);
+    try {
+      expect(readFeed(second, alex)).toEqual(alexFeed);
+      expect(readFeed(second, "usr_admin_001")).toEqual(adminFeed);
+      expect(readPreferences(second, alex)).toEqual(preferences);
+      expect(readPreferences(second, "usr_admin_001")).toEqual(defaultPreferences());
+      expect(readWaitBaselines(second)).toEqual({ "seed-1": 5, "seed-3": 15 });
+      expect(() => transaction(second, () => saveWaitBaselines(second, { "seed-3": 10, missing: 1 }))).toThrow(/FOREIGN KEY/);
+      expect(readWaitBaselines(second)).toEqual({ "seed-1": 5, "seed-3": 15 });
+      second.prepare("DELETE FROM queue_entries WHERE id = ?").run("seed-1");
+      expect(readWaitBaselines(second)).toEqual({ "seed-3": 15 });
+      expect(readFeed(second, "usr_admin_001")).toEqual(adminFeed);
     } finally {
       second.close();
     }

@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getDatabase } from "@/server/db/connection";
-import { resetQueueStore } from "@/server/queue/store";
+import { getQueueStore, resetQueueStore } from "@/server/queue/store";
 import { publishQueueNotifications } from "./publish";
 import { readWaitBaselines } from "./repository";
 import { listNotifications } from "./service";
@@ -16,6 +16,8 @@ beforeEach(() => {
   resetQueueStore();
   db = resetNotificationStore();
 });
+
+afterEach(() => vi.restoreAllMocks());
 
 const studentServices = { events: [], serviceIds: ["student-services"], db };
 
@@ -116,4 +118,27 @@ describe("publishQueueNotifications", () => {
     expect(readWaitBaselines(db)).toEqual({});
     logged.mockRestore();
   });
+  it("rolls back earlier deliveries and baselines on a later SQL failure, then retries successfully", async () => {
+    const before = db.prepare("SELECT * FROM notifications ORDER BY id").all();
+    const queueBefore = structuredClone(getQueueStore());
+    db.exec(`CREATE TRIGGER reject_second_delivery BEFORE INSERT ON notifications
+      WHEN NEW.user_id = 'taylor-nguyen' BEGIN SELECT RAISE(ABORT, 'second delivery failed'); END;`);
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(await publishQueueNotifications({ ...studentServices, db })).toEqual([]);
+      expect(logged).toHaveBeenCalled();
+      expect(db.prepare("SELECT * FROM notifications ORDER BY id").all()).toEqual(before);
+      expect(readWaitBaselines(db)).toEqual({});
+      expect(getQueueStore()).toEqual(queueBefore);
+    } finally {
+      db.exec("DROP TRIGGER reject_second_delivery");
+      logged.mockRestore();
+    }
+    const delivered = await publishQueueNotifications({ ...studentServices, db });
+    expect(delivered.map(note => note.userId)).toEqual(["usr_demo_003", "taylor-nguyen", "usr_alex_002"]);
+    expect(readWaitBaselines(db)).toEqual({ "seed-1": 5, "seed-2": 10, "seed-3": 15 });
+    expect(listNotifications(db, "usr_alex_002").total).toBe(3);
+    expect(listNotifications(db, "usr_admin_001").total).toBe(1);
+  });
+
 });

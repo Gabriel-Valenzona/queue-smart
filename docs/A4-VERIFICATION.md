@@ -137,3 +137,17 @@ failures and regressions must be resolved before committing.
 - Primary queue/API suites: 107 passed; TypeScript, ESLint and diff checks passed.
 - Latest repository-only rerun: 23 passed. Independent validator: **PASS**, all
   107 queue/API tests, cleanup/assertion review, ESLint and diff checks passed.
+
+### 5d — Notification persistence and transaction gaps
+
+- Extended real-file coverage to wait baselines, messages/read state/deletion,
+  per-account preferences, account isolation and baseline foreign-key cascades.
+- Verified failed baseline replacement retains prior values. A publisher SQL
+  trigger fails a later delivery after earlier writes, proving messages and
+  announced estimates roll back together while the queue remains committed;
+  retry then succeeds without cross-account changes or duplicate deliveries.
+- Hardened file connection and mock cleanup. TypeScript, ESLint and diff checks
+  passed; focused notification/API results are recorded below.
+- Primary and independent notification/API runs: **121/121 passed**.
+  Independent validator: **PASS** on persisted assertions, rollback/retry,
+  isolation, cleanup, focused ESLint and diff checks.
