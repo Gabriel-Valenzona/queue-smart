@@ -160,6 +160,55 @@ export const SEED_USERS: SeedUserFixture[] = [
     createdAt: "2026-01-03T10:00:00.000Z",
     updatedAt: "2026-01-03T10:00:00.000Z",
   },
+  // Waiting in the demo queues, so queue entries can reference them.
+  {
+    id: "taylor-nguyen",
+    name: "Taylor Nguyen",
+    email: "taylor@example.com",
+    role: "user",
+    passwordPlain: "User123!",
+    contactInfo: null,
+    preferences: {
+      emailNotifications: true,
+      smsNotifications: false,
+      theme: "system",
+      language: "en-US",
+    },
+    createdAt: "2026-01-04T10:00:00.000Z",
+    updatedAt: "2026-01-04T10:00:00.000Z",
+  },
+  {
+    id: "casey-kim",
+    name: "Casey Kim",
+    email: "casey@example.com",
+    role: "user",
+    passwordPlain: "User123!",
+    contactInfo: null,
+    preferences: {
+      emailNotifications: true,
+      smsNotifications: false,
+      theme: "system",
+      language: "en-US",
+    },
+    createdAt: "2026-01-05T10:00:00.000Z",
+    updatedAt: "2026-01-05T10:00:00.000Z",
+  },
+  {
+    id: "avery-brooks",
+    name: "Avery Brooks",
+    email: "avery@example.com",
+    role: "user",
+    passwordPlain: "User123!",
+    contactInfo: null,
+    preferences: {
+      emailNotifications: true,
+      smsNotifications: false,
+      theme: "system",
+      language: "en-US",
+    },
+    createdAt: "2026-01-06T10:00:00.000Z",
+    updatedAt: "2026-01-06T10:00:00.000Z",
+  },
 ];
 
 export interface SeedServiceFixture {
