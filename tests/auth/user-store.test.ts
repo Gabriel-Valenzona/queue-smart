@@ -1,9 +1,10 @@
-import { describe, it, beforeEach } from "node:test";
+import { describe, it, beforeEach } from "vitest";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { DuplicateEmailError, UserStore } from "../../src/lib/auth/user-store";
+import { memoryDatabase } from "../helpers/database";
 import { openDatabase } from "../../src/server/db/connection";
 import { generateSalt, hashPassword } from "../../src/lib/auth/crypto";
 
@@ -11,7 +12,7 @@ describe("UserStore", () => {
   let store: UserStore;
 
   beforeEach(() => {
-    store = new UserStore(() => openDatabase(":memory:"));
+    store = new UserStore(() => memoryDatabase());
   });
 
   it("should initialize with default pre-seeded users", async () => {
@@ -125,7 +126,7 @@ describe("user_credentials table", () => {
   }
 
   it("stores only a password hash, never the password", async () => {
-    const db = openDatabase(":memory:");
+    const db = memoryDatabase();
     const store = new UserStore(() => db);
     await store.count();
     const rows = db.prepare("SELECT * FROM user_credentials").all() as Record<string, string>[];
@@ -137,14 +138,14 @@ describe("user_credentials table", () => {
   });
 
   it("rejects a plain-text password, even from code that skips validation", () => {
-    const db = openDatabase(":memory:");
+    const db = memoryDatabase();
     assert.throws(() => insert(db, { password_hash: "User123!" }), /CHECK/);
     assert.throws(() => insert(db, { password_hash: "Z".repeat(128) }), /CHECK/);
     assert.throws(() => insert(db, { password_hash: null }), /NOT NULL/);
   });
 
   it("enforces required fields, types, lengths, and roles", () => {
-    const db = openDatabase(":memory:");
+    const db = memoryDatabase();
     assert.throws(() => insert(db, { email: null }), /NOT NULL/);
     assert.throws(() => insert(db, { name: null }), /NOT NULL/);
     assert.throws(() => insert(db, { name: "   " }), /CHECK/);
@@ -160,14 +161,14 @@ describe("user_credentials table", () => {
   });
 
   it("refuses a second account for an email, whatever its case", async () => {
-    const store = new UserStore(() => openDatabase(":memory:"));
+    const store = new UserStore(() => memoryDatabase());
     await store.create(account);
     await assert.rejects(store.create({ ...account, email: "  SAM@example.com " }), DuplicateEmailError);
     await assert.rejects(store.create({ ...account, email: "alex@example.com" }), DuplicateEmailError);
   });
 
   it("rethrows database errors other than a taken email", async () => {
-    const store = new UserStore(() => openDatabase(":memory:"));
+    const store = new UserStore(() => memoryDatabase());
     await assert.rejects(store.create({ ...account, passwordHash: "plain text" }), /CHECK/);
   });
 

@@ -1,4 +1,4 @@
-import { describe, it, beforeEach } from "node:test";
+import { describe, it, beforeEach, afterEach } from "vitest";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import {
@@ -18,6 +18,8 @@ describe("Area 2: UserProfile Repository", () => {
     userRepo = new UserRepository(db);
     profileRepo = new UserProfileRepository(db);
   });
+
+  afterEach(() => db.close());
 
   it("should retrieve seeded user profiles by email case-insensitively", () => {
     const profile = profileRepo.findByEmail("admin@queuesmart.com");

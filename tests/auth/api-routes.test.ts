@@ -1,4 +1,4 @@
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 import assert from "node:assert/strict";
 import { POST as registerHandler } from "../../src/app/api/auth/register/route";
 import { POST as loginHandler } from "../../src/app/api/auth/login/route";

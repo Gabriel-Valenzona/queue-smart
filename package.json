@@ -7,9 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run && npm run test:auth && npm run test:db",
-    "test:auth": "node --import tsx --import ./tests/auth/setup.ts --test tests/auth/*.test.ts",
-    "test:db": "node --import tsx --import ./tests/auth/setup.ts --test tests/db/*.test.ts",
+    "test": "vitest run",
+    "test:auth": "vitest run tests/auth",
+    "test:db": "vitest run tests/db",
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {

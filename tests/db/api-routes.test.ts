@@ -1,4 +1,4 @@
-import { describe, it } from "node:test";
+import { beforeEach, describe, it } from "vitest";
 import assert from "node:assert/strict";
 import { GET as getProfileHandler, PUT as putProfileHandler } from "../../src/app/api/user/profile/route";
 import { GET as getServicesHandler, POST as postServicesHandler } from "../../src/app/api/services/route";
@@ -8,6 +8,18 @@ import {
   DELETE as deleteSingleServiceHandler,
 } from "../../src/app/api/services/[serviceId]/route";
 import { authService } from "../../src/lib/auth/auth-service";
+
+import { getDatabase, seedDatabase } from "../../src/server/db";
+import { resetQueueStore } from "../../src/server/queue/store";
+
+beforeEach(() => {
+  const db = getDatabase();
+  db.exec(`DELETE FROM queue_entries; DELETE FROM queues;
+    DELETE FROM notifications; DELETE FROM user_profiles;
+    DELETE FROM user_credentials; DELETE FROM services;`);
+  seedDatabase(db);
+  resetQueueStore();
+});
 
 describe("Database Backend API Routes - UserProfile & Service", () => {
   describe("UserProfile API: /api/user/profile", () => {
@@ -87,23 +99,6 @@ describe("Database Backend API Routes - UserProfile & Service", () => {
       assert.equal(json.profile.contactInfo, "+1 832-555-4321");
       assert.equal(json.profile.preferences.smsNotifications, false);
       assert.equal(json.profile.preferences.theme, "light");
-
-      // Restore Alex Morgan profile to original demo state
-      await putProfileHandler(
-        new Request("http://localhost:3000/api/user/profile?email=alex@example.com", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            fullName: "Alex Morgan",
-            contactInfo: "+1 (713) 555-0199",
-            preferences: {
-              emailNotifications: true,
-              smsNotifications: true,
-              theme: "system",
-            },
-          }),
-        })
-      );
     });
 
     it("should reject invalid profile updates with 400 Bad Request", async () => {
@@ -167,10 +162,6 @@ describe("Database Backend API Routes - UserProfile & Service", () => {
       assert.equal(json.service.name, "Campus Health & Wellness");
       assert.equal(json.service.expectedDuration, 25);
       assert.equal(json.service.priorityLevel, "high");
-
-      // Clean up created service so it doesn't affect other tests
-      const ctx = { params: Promise.resolve({ serviceId: testServiceId }) };
-      await deleteSingleServiceHandler(new Request(`http://localhost:3000/api/services/${testServiceId}`), ctx);
     });
 
     it("POST /api/services should reject missing required fields with 400", async () => {
@@ -273,9 +264,6 @@ describe("Database Backend API Routes - UserProfile & Service", () => {
       assert.equal(json.service.name, "Updated Service Name");
       assert.equal(json.service.expectedDuration, 20);
       assert.equal(json.service.priorityLevel, "high");
-
-      // Clean up
-      await deleteSingleServiceHandler(new Request(`http://localhost:3000/api/services/${updateTestId}`), ctx);
     });
 
     it("DELETE /api/services/[serviceId] should delete service", async () => {

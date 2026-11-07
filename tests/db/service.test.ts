@@ -1,4 +1,4 @@
-import { describe, it, beforeEach } from "node:test";
+import { describe, it, beforeEach, afterEach } from "vitest";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { createTestDatabase, ServiceRepository } from "../../src/server/db";
@@ -11,6 +11,8 @@ describe("Area 3: Service Repository", () => {
     db = createTestDatabase(true);
     serviceRepo = new ServiceRepository(db);
   });
+
+  afterEach(() => db.close());
 
   it("should retrieve seeded services by Service ID", () => {
     const service = serviceRepo.findById("student-services");

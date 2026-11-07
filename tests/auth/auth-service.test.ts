@@ -1,17 +1,21 @@
-import { describe, it, beforeEach } from "node:test";
+import { describe, it, beforeEach, afterEach } from "vitest";
 import assert from "node:assert/strict";
 import { AuthService } from "../../src/lib/auth/auth-service";
 import { UserStore } from "../../src/lib/auth/user-store";
 import { openDatabase } from "../../src/server/db/connection";
 
 describe("AuthService Business Logic & Role Handling", () => {
+  let db: ReturnType<typeof openDatabase>;
   let store: UserStore;
   let service: AuthService;
 
   beforeEach(() => {
-    store = new UserStore(() => openDatabase(":memory:"));
+    db = openDatabase(":memory:");
+    store = new UserStore(() => db);
     service = new AuthService(store);
   });
+
+  afterEach(() => db.close());
 
   describe("User Registration", () => {
     const password = "UserSecret123!";

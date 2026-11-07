@@ -1,4 +1,4 @@
-import { describe, it, beforeEach } from "node:test";
+import { describe, it, beforeEach, afterEach } from "vitest";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import {
@@ -15,6 +15,8 @@ describe("SQLite Database Layer - Schema & Integrity", () => {
   beforeEach(() => {
     db = createTestDatabase(false);
   });
+
+  afterEach(() => db.close());
 
   it("should initialize schema and tables correctly", () => {
     initSchema(db);
