@@ -45,7 +45,7 @@ async function request(
   });
 }
 beforeEach(() => {
-  getDatabase().exec("DELETE FROM services");
+  getDatabase().exec("DELETE FROM queue_entries; DELETE FROM queues; DELETE FROM services;");
   serviceRepository.seedDefaultServices();
   resetQueueStore();
 });

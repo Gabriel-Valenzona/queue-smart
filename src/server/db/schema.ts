@@ -26,7 +26,8 @@ export const tables = `
 
   CREATE TABLE IF NOT EXISTS queues (
     id          TEXT PRIMARY KEY CHECK (length(id) BETWEEN 1 AND 64),
-    service_id  TEXT NOT NULL UNIQUE CHECK (length(service_id) BETWEEN 1 AND 64),
+    service_id  TEXT NOT NULL UNIQUE REFERENCES services(id) ON DELETE RESTRICT
+                CHECK (length(service_id) BETWEEN 1 AND 64),
     status      TEXT NOT NULL DEFAULT 'closed' CHECK (status IN ('open', 'closed')),
     created_at  TEXT NOT NULL CHECK (julianday(created_at) IS NOT NULL)
   ) STRICT;
@@ -257,8 +258,54 @@ export const SEED_SERVICES: SeedServiceFixture[] = [
 
 export function applySchema(db: DatabaseSync) {
   db.exec("PRAGMA foreign_keys = ON;");
-  db.exec(tables);
+  // The base schema must create services before queues now that queues references it.
+  const serviceTable = tables.slice(tables.indexOf("  -- Area 3: Service"));
+  const beforeService = tables.slice(0, tables.indexOf("  -- Area 3: Service"));
+  db.exec(beforeService);
+  db.exec(serviceTable);
   applyNotificationSchema(db);
+  migrateQueueServiceForeignKey(db);
+}
+
+/** Add the queue-to-service relationship to existing A4 databases without dropping queue/history rows. */
+function migrateQueueServiceForeignKey(db: DatabaseSync) {
+  const foreignKeys = db.prepare("PRAGMA foreign_key_list(queues)").all() as Array<{
+    table: string;
+    from: string;
+    to: string;
+  }>;
+  if (foreignKeys.some((key) => key.table === "services" && key.from === "service_id" && key.to === "id")) return;
+
+  const orphan = db.prepare(`SELECT service_id FROM queues WHERE service_id NOT IN (SELECT id FROM services) LIMIT 1`).get();
+  if (orphan) {
+    throw new Error("Cannot add queues.service_id foreign key: an existing queue references a missing service.");
+  }
+
+  db.exec("PRAGMA foreign_keys = OFF;");
+  try {
+    db.exec(`
+      BEGIN IMMEDIATE;
+      CREATE TABLE queues_with_service_fk (
+        id          TEXT PRIMARY KEY CHECK (length(id) BETWEEN 1 AND 64),
+        service_id  TEXT NOT NULL UNIQUE REFERENCES services(id) ON DELETE RESTRICT
+                    CHECK (length(service_id) BETWEEN 1 AND 64),
+        status      TEXT NOT NULL DEFAULT 'closed' CHECK (status IN ('open', 'closed')),
+        created_at  TEXT NOT NULL CHECK (julianday(created_at) IS NOT NULL)
+      ) STRICT;
+      INSERT INTO queues_with_service_fk (id, service_id, status, created_at)
+        SELECT id, service_id, status, created_at FROM queues;
+      DROP TABLE queues;
+      ALTER TABLE queues_with_service_fk RENAME TO queues;
+      COMMIT;
+    `);
+  } catch (error) {
+    try { db.exec("ROLLBACK;"); } catch { /* Transaction may already have rolled back. */ }
+    throw error;
+  } finally {
+    db.exec("PRAGMA foreign_keys = ON;");
+  }
+  const violations = db.prepare("PRAGMA foreign_key_check").all();
+  if (violations.length) throw new Error("Queue service foreign-key migration produced a constraint violation.");
 }
 
 export function initSchema(db: DatabaseSync): void {

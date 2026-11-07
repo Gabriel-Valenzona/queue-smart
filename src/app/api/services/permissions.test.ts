@@ -15,7 +15,7 @@ const mutations = [
 ];
 let tokens: Record<string, string>;
 beforeEach(async () => {
-  getDatabase().exec("DELETE FROM services");
+  getDatabase().exec("DELETE FROM queue_entries; DELETE FROM queues; DELETE FROM services;");
   serviceRepository.seedDefaultServices();
   resetQueueStore();
   const admin = (await authService.getUserById("usr_admin_001"))!;

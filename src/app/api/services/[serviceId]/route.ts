@@ -222,7 +222,17 @@ export async function DELETE(
         );
       }
 
-      serviceRepository.delete(serviceId);
+      try {
+        serviceRepository.delete(serviceId);
+      } catch (error) {
+        if (error instanceof Error && /FOREIGN KEY constraint failed/.test(error.message)) {
+          return serviceResponse(
+            { success: false, message: "This service has a queue or retained history and cannot be deleted." },
+            { status: 409 }
+          );
+        }
+        throw error;
+      }
 
       syncQueueServices(getQueueStore());
 

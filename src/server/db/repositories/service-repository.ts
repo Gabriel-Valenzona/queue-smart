@@ -222,12 +222,14 @@ export class ServiceRepository {
   public delete(id: string): boolean {
     const existing = this.findById(id);
     if (!existing) return false;
-
-    const result = this.db
-      .prepare(`DELETE FROM services WHERE id = ?`)
-      .run(id);
-
-    return result.changes > 0;
+    return transaction(this.db, () => {
+      // Empty queues can be removed with their service; retain any queue history.
+      const hasEntries = this.db.prepare(`SELECT 1 FROM queue_entries e
+        JOIN queues q ON q.id = e.queue_id WHERE q.service_id = ? LIMIT 1`).get(id);
+      if (!hasEntries) this.db.prepare("DELETE FROM queues WHERE service_id = ?").run(id);
+      const result = this.db.prepare("DELETE FROM services WHERE id = ?").run(id);
+      return result.changes > 0;
+    });
   }
 
   /**

@@ -68,6 +68,10 @@ let store: QueueStore;
 beforeEach(() => {
   db = openDatabase(":memory:");
   addUsers(db, "a", "b", "c", "user-1", "user-2");
+  new ServiceRepository(db).create({
+    id: advising.id, name: advising.name, description: advising.description,
+    duration: advising.duration, priority: advising.priority, open: advising.open,
+  });
   store = loadQueueStore(db, [{ ...advising }]);
 });
 afterEach(() => db.close());
@@ -253,6 +257,8 @@ describe("queue_entries table", () => {
 
   it("gives a newly created service a queue the first time it is used", () => {
     const tutoring = { ...advising, id: "tutoring", name: "Tutoring" };
+    new ServiceRepository(db).create({ id: tutoring.id, name: tutoring.name, description: tutoring.description,
+      duration: tutoring.duration, priority: tutoring.priority, open: tutoring.open });
     store.services.push(tutoring);
     join("a", "tutoring");
     expect(getQueue(reload([{ ...advising }, { ...tutoring }]), "tutoring").entries).toHaveLength(
@@ -264,6 +270,8 @@ describe("queue_entries table", () => {
 describe("write-through failures", () => {
   it("reloads the store and reports a conflict when the database refuses a join", () => {
     // The user already waits in a queue this store does not show.
+    new ServiceRepository(db).create({ id: "other", name: "Other", description: advising.description,
+      duration: advising.duration, priority: advising.priority, open: advising.open });
     const other = loadQueueStore(db, [{ ...advising, id: "other", name: "Other" }]);
     joinQueue(other, "other", { userId: "a", userName: "A", priority: "medium" });
     join("b");
@@ -369,6 +377,8 @@ describe("seeding and restarts", () => {
       let entry;
       try {
         addUsers(firstDb, "a");
+        new ServiceRepository(firstDb).create({ id: advising.id, name: advising.name, description: advising.description,
+          duration: advising.duration, priority: advising.priority, open: advising.open });
         const first = loadQueueStore(firstDb, [{ ...advising }]);
         entry = joinQueue(first, "advising", {
           userId: "a",

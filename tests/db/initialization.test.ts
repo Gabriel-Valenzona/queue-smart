@@ -55,6 +55,38 @@ it("applies every A4 table, view and required index without seeding or erasing e
   expect(db!.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
 });
 
+it("migrates an existing queue table to reference services without losing queues or history", () => {
+  db = createDatabaseConnection(file);
+  seedQueues(db);
+  seedNotifications(db);
+  const queues = db.prepare("SELECT * FROM queues ORDER BY id").all();
+  const entries = db.prepare("SELECT * FROM queue_entries ORDER BY id").all();
+  db.exec(`
+    PRAGMA foreign_keys = OFF;
+    DROP TABLE queues;
+    CREATE TABLE queues (
+      id TEXT PRIMARY KEY CHECK (length(id) BETWEEN 1 AND 64),
+      service_id TEXT NOT NULL UNIQUE CHECK (length(service_id) BETWEEN 1 AND 64),
+      status TEXT NOT NULL DEFAULT 'closed' CHECK (status IN ('open', 'closed')),
+      created_at TEXT NOT NULL CHECK (julianday(created_at) IS NOT NULL)
+    ) STRICT;
+  `);
+  // Recreate the legacy queue rows after replacing the table definition.
+  for (const queue of queues as Array<{ id: string; service_id: string; status: string; created_at: string }>) {
+    db.prepare("INSERT INTO queues (id, service_id, status, created_at) VALUES (?, ?, ?, ?)").run(queue.id, queue.service_id, queue.status, queue.created_at);
+  }
+  db.exec("PRAGMA foreign_keys = ON;");
+  initSchema(db);
+  expect(db.prepare("SELECT * FROM queues ORDER BY id").all()).toEqual(queues);
+  expect(db.prepare("SELECT * FROM queue_entries ORDER BY id").all()).toEqual(entries);
+  expect(db.prepare("PRAGMA foreign_key_list(queues)").all()).toEqual(expect.arrayContaining([
+    expect.objectContaining({ table: "services", from: "service_id", to: "id", on_delete: "RESTRICT" }),
+  ]));
+  expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+  expect(db.prepare("PRAGMA foreign_keys").get()).toEqual({ foreign_keys: 1 });
+  expect(() => db!.prepare("DELETE FROM services WHERE id = 'student-services'").run()).toThrow(/FOREIGN KEY/);
+});
+
 it("seeds once on startup and retains saved service/profile edits and queue rows after reopening", () => {
   db = createDatabaseConnection(file);
   seedQueues(db);

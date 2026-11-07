@@ -10,6 +10,7 @@ import {
 import { authService } from "../../src/lib/auth/auth-service";
 
 import { getDatabase, seedDatabase } from "../../src/server/db";
+import { ServiceRepository } from "../../src/server/db/repositories/service-repository";
 import { resetQueueStore } from "../../src/server/queue/store";
 
 let adminToken: string;
@@ -300,6 +301,29 @@ describe("Database Backend API Routes - UserProfile & Service", () => {
 
       const json = await response.json();
       assert.equal(json.success, true);
+      assert.equal(new ServiceRepository(getDatabase()).findById(delId), null);
+    });
+
+    it("keeps a service when its queue has retained participation history", async () => {
+      const db = getDatabase();
+      const id = "service-with-history";
+      new ServiceRepository(db).create({ id, name: "History service", description: "Help", duration: 5, open: false });
+      const queueId = (db.prepare("SELECT id FROM queues WHERE service_id = ?").get(id) as { id: string }).id;
+      db.prepare(`INSERT INTO queue_entries
+        (id, queue_id, user_id, user_name, priority, position, joined_at, status, completed_at, service_name)
+        VALUES (?, ?, ?, ?, ?, NULL, ?, 'served', ?, ?)`)
+        .run("history-entry", queueId, "usr_alex_002", "Alex Morgan", "medium",
+          "2026-11-01T10:00:00.000Z", "2026-11-01T10:05:00.000Z", "History service");
+
+      const response = await deleteSingleServiceHandler(
+        serviceRequest(`http://localhost:3000/api/services/${id}`, { method: "DELETE" }),
+        { params: Promise.resolve({ serviceId: id }) },
+      );
+      assert.equal(response.status, 409);
+      assert.equal((await response.json()).error.code, "service_in_use");
+      assert.ok(new ServiceRepository(db).findById(id));
+      const retained = db.prepare("SELECT service_name FROM queue_entries WHERE id = ?").get("history-entry") as { service_name: string };
+      assert.equal(retained.service_name, "History service");
     });
   });
 });

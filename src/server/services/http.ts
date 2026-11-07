@@ -19,6 +19,7 @@ export function serviceResponse(body: ServiceResponse, init: { status: number })
   const code = body.errors?._general ? "invalid_json"
     : init.status === 400 ? "validation_error"
     : init.status === 404 ? "service_not_found"
+    : init.status === 409 && /queue or retained history/i.test(body.message ?? "") ? "service_in_use"
     : init.status === 409 ? "duplicate_service"
     : "internal_error";
   return NextResponse.json({ ...body, error: { code, message: body.message, fields } }, init);
