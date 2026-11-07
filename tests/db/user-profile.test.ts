@@ -138,4 +138,82 @@ describe("Area 2: UserProfile Repository", () => {
     assert.ok(emails.includes("admin@queuesmart.com"));
     assert.ok(emails.includes("alex@example.com"));
   });
+  it("finds profile IDs, handles missing records, and reports actual counts", () => {
+    const profile = profileRepo.findByEmail("alex@example.com")!;
+    assert.deepEqual(profileRepo.findById(profile.id), profile);
+    assert.equal(profileRepo.findById("missing"), null);
+    assert.equal(profileRepo.findByUserId("missing"), null);
+    assert.equal(profileRepo.findByEmail("missing@example.com"), null);
+    assert.equal(profileRepo.delete("missing"), false);
+    assert.throws(() => profileRepo.update("missing", { fullName: "Unknown" }), /not found/);
+    assert.equal(profileRepo.count(), profileRepo.listAll().length);
+  });
+
+  it("preserves omitted optional fields and explicitly clears contact/preferences", () => {
+    const before = profileRepo.findByEmail("alex@example.com")!;
+    const partial = profileRepo.update(before.id, { fullName: "  Alexandria  " });
+    assert.equal(partial.fullName, "Alexandria");
+    assert.equal(partial.contactInfo, before.contactInfo);
+    assert.deepEqual(partial.preferences, before.preferences);
+    const cleared = profileRepo.update(before.id, { contactInfo: null, preferences: null });
+    assert.equal(cleared.fullName, "Alexandria");
+    assert.equal(cleared.contactInfo, null);
+    assert.equal(cleared.preferences, null);
+    assert.deepEqual({ ...db.prepare("SELECT contact_info, preferences FROM user_profiles WHERE id = ?").get(before.id) as object }, { contact_info: null, preferences: null });
+  });
+
+  it("serializes object and legacy string preferences and tolerates corrupt stored JSON", () => {
+    const profile = profileRepo.findByEmail("alex@example.com")!;
+    for (const [input, expected] of [
+      [{ theme: "dark", nested: { locale: "en-US" } }, { theme: "dark", nested: { locale: "en-US" } }],
+      ['{"theme":"light"}', { theme: "light" }],
+      ["legacy setting", { custom: "legacy setting" }],
+    ] as const) {
+      const updated = profileRepo.update(profile.id, { preferences: input });
+      assert.deepEqual(updated.preferences, expected);
+      const row = db.prepare("SELECT preferences FROM user_profiles WHERE id = ?").get(profile.id) as { preferences: string };
+      assert.deepEqual(JSON.parse(row.preferences), expected);
+    }
+    db.prepare("UPDATE user_profiles SET preferences = ? WHERE id = ?").run("{broken", profile.id);
+    assert.equal(profileRepo.findById(profile.id)?.preferences, null);
+  });
+
+  it("upserts an existing profile without changing its identity or creation date", () => {
+    const before = profileRepo.findByEmail("alex@example.com")!;
+    const updatedAt = "2026-11-06T12:00:00.000Z";
+    const count = profileRepo.count();
+    const updated = profileRepo.upsert({ userId: before.userId, email: " ALEX@EXAMPLE.COM ", fullName: "Alex Updated", contactInfo: "  555-0100  ", preferences: { theme: "light" }, updatedAt });
+    assert.equal(updated.id, before.id);
+    assert.equal(updated.createdAt, before.createdAt);
+    assert.equal(updated.updatedAt, updatedAt);
+    assert.equal(updated.contactInfo, "555-0100");
+    assert.equal(profileRepo.count(), count);
+    assert.equal(userRepo.findById(before.userId)?.name, "Alex Updated");
+  });
+
+  it("enforces both implemented parent references and unique email on direct profile creation", () => {
+    const original = profileRepo.findByEmail("alex@example.com")!;
+    profileRepo.delete(original.id);
+    const input = { userId: original.userId, email: original.email, fullName: "Alex" };
+    assert.throws(() => profileRepo.create({ ...input, userId: "missing-user" }), /FOREIGN KEY/);
+    assert.throws(() => profileRepo.create({ ...input, email: "missing@example.com" }), /FOREIGN KEY/);
+    const created = profileRepo.upsert(input);
+    assert.ok(created.id.startsWith("prof_"));
+    assert.equal(created.contactInfo, null);
+    assert.equal(created.preferences, null);
+    assert.throws(() => profileRepo.create(input), /UNIQUE/);
+    assert.equal(profileRepo.findByUserId(original.userId)?.id, created.id);
+  });
+
+  it("cascades parent email changes and deletes without removing other profiles", () => {
+    const profile = profileRepo.findByEmail("alex@example.com")!;
+    const other = profileRepo.findByEmail("admin@queuesmart.com");
+    db.prepare("UPDATE user_credentials SET email = ? WHERE id = ?").run("updated-alex@example.com", profile.userId);
+    assert.equal(profileRepo.findByEmail("alex@example.com"), null);
+    assert.equal(profileRepo.findById(profile.id)?.email, "updated-alex@example.com");
+    db.prepare("DELETE FROM user_credentials WHERE id = ?").run(profile.userId);
+    assert.equal(profileRepo.findById(profile.id), null);
+    assert.deepEqual(profileRepo.findByEmail("admin@queuesmart.com"), other);
+  });
+
 });

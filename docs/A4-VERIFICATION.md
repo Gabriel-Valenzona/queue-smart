@@ -112,3 +112,16 @@ failures and regressions must be resolved before committing.
   TypeScript, test ESLint and diff checks passed.
 - Independent validator: **PASS**, authentication suite 66/66 passed, fixtures
   and persisted assertions reviewed, focused ESLint/diff checks passed.
+
+### 5b — Profile persistence gaps
+
+- Extended existing profile tests with explicit optional-field preservation and
+  clearing, raw SQL preferences serialization, legacy strings/corrupt JSON,
+  upsert identity, missing lookups, counts, uniqueness and both implemented
+  parent references, email update/delete cascades and parent display names.
+- A real-file test verifies changes, optional clears and deletion after fresh
+  connections, including AuthService/UserStore access and other-account data.
+- Primary focused profile/API tests: 27 passed. TypeScript, ESLint and diff
+  checks passed. Profile authorization remains outside scope.
+- Independent validator: **PASS**, all 27 focused tests, fixture review, ESLint
+  and diff checks passed. No authorization/application changes were made.
