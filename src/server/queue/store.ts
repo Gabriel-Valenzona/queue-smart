@@ -10,17 +10,19 @@ import { QueueError } from "./errors";
 import {
   clearQueues,
   countQueues,
+  ensureQueue,
   readQueueState,
+  reconcileServiceAvailability,
   saveLine,
 } from "./repository";
 import type { CompletedParticipation, QueueEntry, QueueService } from "./types";
-import { serviceRepository } from "@/server/db/repositories/service-repository";
+import { ServiceRepository } from "@/server/db/repositories/service-repository";
 
 /**
  * The queue module's working data. The server's store is loaded from SQLite
  * (see `loadQueueStore`) and every queue change is written back to it; stores
  * from `createSeedStore`/`createEmptyStore` stay in memory for unit tests.
- * Services are synced with SQLite via `loadServicesFromDb`/`syncQueueServices`.
+ * Each persisted store reads services and writes queues through its own connection.
  */
 export type QueueStore = {
   services: QueueService[];
@@ -56,23 +58,15 @@ const seedServices: QueueService[] = [
   },
 ];
 
-function loadServicesFromDb(): QueueService[] {
-  try {
-    const list = serviceRepository.listAll();
-    if (list && list.length > 0) {
-      return list.map((s) => ({
-        id: s.id,
-        name: s.name,
-        description: s.description,
-        duration: s.expectedDuration,
-        priority: s.priorityLevel,
-        open: s.open,
-      }));
-    }
-  } catch {
-    // Fall back to seedServices if DB is not available
-  }
-  return seedServices.map((service) => ({ ...service }));
+function loadServicesFromDb(db: Database): QueueService[] {
+  return new ServiceRepository(db).listAll().map((service) => ({
+    id: service.id,
+    name: service.name,
+    description: service.description,
+    duration: service.expectedDuration,
+    priority: service.priorityLevel,
+    open: service.open,
+  }));
 }
 
 function seedEntry(
@@ -87,7 +81,7 @@ function seedEntry(
 
 /** Matches the A2 demo: Alex Morgan starts third in line for Student services. */
 export function createSeedStore(): QueueStore {
-  const services = loadServicesFromDb();
+  const services = seedServices.map((service) => ({ ...service }));
   return {
     services,
     queues: {
@@ -119,7 +113,7 @@ const databases = new WeakMap<QueueStore, Database>();
 
 /** Replaces the store's queue data with what the database holds. */
 function hydrate(store: QueueStore, db: Database) {
-  const state = readQueueState(db, store.services);
+  const state = readQueueState(db, store.services, false);
   for (const service of store.services)
     service.open = state.open.get(service.id) ?? service.open;
   store.queues = state.queues;
@@ -132,21 +126,22 @@ export function seedQueues(db: Database) {
   transaction(db, () => {
     if (countQueues(db) > 0) return;
     const seed = createSeedStore();
-    for (const service of seed.services) saveLine(db, service, seed.queues[service.id] ?? []);
+    for (const service of loadServicesFromDb(db))
+      saveLine(db, service, seed.queues[service.id] ?? []);
   });
 }
 
-/**
- * Loads queues and entries from the database. Services are not in the
- * database yet, so `services` (the seed list by default) decides which queues
- * the store exposes; any of them without a queue gets one.
- */
+/** Loads this connection's services and queues, creating any missing queues. */
 export function loadQueueStore(
   db: Database,
-  services: QueueService[] = createSeedStore().services,
+  services: QueueService[] = loadServicesFromDb(db),
 ): QueueStore {
   const store = createEmptyStore(services);
-  transaction(db, () => hydrate(store, db));
+  transaction(db, () => {
+    for (const service of store.services) ensureQueue(db, service);
+    reconcileServiceAvailability(db);
+    hydrate(store, db);
+  });
   databases.set(store, db);
   return store;
 }
@@ -201,10 +196,9 @@ export function resetQueueStore(): QueueStore {
  * Synchronizes queue store services with SQLite database.
  */
 export function syncQueueServices(store: QueueStore): QueueStore {
-  const dbServices = loadServicesFromDb();
-  store.services = dbServices;
-  for (const s of dbServices) {
-    store.queues[s.id] ??= [];
-  }
+  const db = databases.get(store);
+  if (!db) return store;
+  store.services = loadServicesFromDb(db);
+  hydrate(store, db);
   return store;
 }

@@ -1,6 +1,7 @@
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { reconcileServiceAvailability } from "@/server/queue/repository";
 import { applySchema, seedDatabase } from "./schema";
 
 /** SQLite database for A4, using Node's built-in driver (Node 22.13+). */
@@ -46,6 +47,7 @@ export function openDatabase(file = databasePath(), autoSeed: boolean = true): D
     }
   }
 
+  reconcileServiceAvailability(db);
   return db;
 }
 

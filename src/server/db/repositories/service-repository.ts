@@ -9,7 +9,7 @@
  */
 
 import type { DatabaseSync } from "node:sqlite";
-import { ensureQueue } from "@/server/queue/repository";
+import { ensureQueue, saveQueueStatus } from "@/server/queue/repository";
 import { getDatabase, transaction } from "../connection";
 import { SEED_SERVICES } from "../schema";
 import type {
@@ -47,10 +47,10 @@ function rowToService(row: ServiceRow): Service {
 }
 
 export class ServiceRepository {
-  private db: DatabaseSync;
+  constructor(private readonly connection?: DatabaseSync) {}
 
-  constructor(db?: DatabaseSync) {
-    this.db = db || getDatabase();
+  private get db(): DatabaseSync {
+    return this.connection ?? getDatabase();
   }
 
   /**
@@ -186,24 +186,27 @@ export class ServiceRepository {
     const open =
       data.open !== undefined ? (data.open ? 1 : 0) : existing.open ? 1 : 0;
 
-    this.db
-      .prepare(
-        `UPDATE services
-         SET name = ?,
-             description = ?,
-             expected_duration = ?,
-             priority_level = ?,
-             open = ?,
-             updated_at = ?
-         WHERE id = ?`
-      )
-      .run(name, description, expectedDuration, priorityLevel, open, now, id);
+    return transaction(this.db, () => {
+      this.db
+        .prepare(
+          `UPDATE services
+           SET name = ?,
+               description = ?,
+               expected_duration = ?,
+               priority_level = ?,
+               open = ?,
+               updated_at = ?
+           WHERE id = ?`
+        )
+        .run(name, description, expectedDuration, priorityLevel, open, now, id);
 
-    const updated = this.findById(id);
-    if (!updated) {
-      throw new Error(`Failed to retrieve updated service for id: ${id}`);
-    }
-    return updated;
+      const updated = this.findById(id);
+      if (!updated) {
+        throw new Error(`Failed to retrieve updated service for id: ${id}`);
+      }
+      saveQueueStatus(this.db, updated, now);
+      return updated;
+    });
   }
 
   /**

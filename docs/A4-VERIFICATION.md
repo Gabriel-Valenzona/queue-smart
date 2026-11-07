@@ -58,3 +58,27 @@ failures and regressions must be resolved before committing.
   browser QA. Creation/reload worked without a framework overlay. These
   frontend/authentication defects remain outside this integration scope;
   this is not a claim of a console-clean application.
+
+### 3 — Availability consistency
+
+- A shared SQL helper writes both availability values on the caller's connection;
+  repository and queue operations each own one transaction. Runtime refresh and
+  rollback hydration read committed data without another transaction or writes.
+- Removed the queue path's separate global repository write and swallowed errors.
+  Pure test stores no longer read or mutate global service storage; persisted
+  stores load services from their own connection.
+- Connection/store initialization reconciles mismatches to saved queue status,
+  preserving queue identifiers, timestamps, entries, and completed outcomes.
+- New checks exercise PUT/PATCH services and PATCH queues in both directions,
+  joins, API/runtime views, no-op updates, per-table UPDATE/INSERT failures,
+  runtime rollback, transaction count, reconnection, and startup reconciliation.
+- Primary focused checks: 56 passed before the final additional failure cases;
+  all 17 availability tests passed afterward. TypeScript and diff checks passed.
+- Complete suite: 459 tests, 456 passed; only the three deferred permission/cache
+  baseline failures remained. Independent validator: **PASS**, latest 86 focused
+  tests passed; focused ESLint/diff checks passed.
+- Actual administrator UI toggled closed→open→closed→open; reloads and direct SQL
+  showed `services.open`/`queues.status` pairs `1/open`, `0/closed`, `1/open`.
+  A server restart with the same temporary database retained Open in the UI/API.
+  Screenshots: `/tmp/queuesmart-validator-m3-toggle.png` and
+  `/tmp/queuesmart-validator-m3-restart.png`.

@@ -147,12 +147,7 @@ export async function POST(request: Request) {
       open,
     });
 
-    // Synchronize queue runtime store
-    try {
-      syncQueueServices(getQueueStore());
-    } catch {
-      // Handled if in test or decoupled
-    }
+    syncQueueServices(getQueueStore());
 
     return serviceResponse(
       {

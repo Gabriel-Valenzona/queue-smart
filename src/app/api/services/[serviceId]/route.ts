@@ -181,11 +181,7 @@ async function handleUpdate(
       open,
     });
 
-    try {
-      syncQueueServices(getQueueStore());
-    } catch {
-      // Ignored in test environment
-    }
+    syncQueueServices(getQueueStore());
 
     return serviceResponse(
       {
@@ -224,11 +220,7 @@ export async function DELETE(
 
     serviceRepository.delete(serviceId);
 
-    try {
-      syncQueueServices(getQueueStore());
-    } catch {
-      // Ignored in test environment
-    }
+    syncQueueServices(getQueueStore());
 
     return serviceResponse(
       {

@@ -79,12 +79,25 @@ export function ensureQueue(
   return row.id;
 }
 
-export function saveQueueStatus(db: Database, service: QueueService) {
+export function saveQueueStatus(db: Database, service: QueueService, updatedAt = new Date().toISOString()) {
   ensureQueue(db, service);
   db.prepare("UPDATE queues SET status = ? WHERE service_id = ?").run(
     service.open ? "open" : "closed",
     service.id,
   );
+  db.prepare("UPDATE services SET open = ?, updated_at = ? WHERE id = ?").run(
+    service.open ? 1 : 0, updatedAt, service.id,
+  );
+}
+
+/** Existing queue status wins when an older database has conflicting values. */
+export function reconcileServiceAvailability(db: Database) {
+  db.exec(`UPDATE services SET open = (
+    SELECT CASE queues.status WHEN 'open' THEN 1 ELSE 0 END
+    FROM queues WHERE queues.service_id = services.id
+  ) WHERE EXISTS (SELECT 1 FROM queues WHERE queues.service_id = services.id)
+    AND open <> (SELECT CASE queues.status WHEN 'open' THEN 1 ELSE 0 END
+                 FROM queues WHERE queues.service_id = services.id)`);
 }
 
 /**
@@ -157,8 +170,8 @@ export function saveLine(
 }
 
 /** Reads every queue, giving each listed service a queue if it lacks one. */
-export function readQueueState(db: Database, services: QueueService[]): QueueState {
-  for (const service of services) ensureQueue(db, service);
+export function readQueueState(db: Database, services: QueueService[], ensureMissing = true): QueueState {
+  if (ensureMissing) for (const service of services) ensureQueue(db, service);
 
   const statuses = db.prepare("SELECT service_id, status FROM queues").all() as {
     service_id: string;
