@@ -18,7 +18,7 @@ Available routes:
 - `/notifications` — independent notification component demo with sample feeds, filters, and settings.
 - `/ui-kit` — interactive shared-component gallery.
 
-Authentication, services, queues, history, and notifications are served by the API routes under `src/app/api`, over a SQLite database (Node's built-in driver) at `data/queuesmart.sqlite`. Set `QUEUESMART_DB_PATH` to use another file, or `:memory:`; tests always use their own in-memory database. The file is created and seeded with the demo accounts, queues, and notifications on first use, so administrator actions reach the user screens and saved data survives a restart. Services are still held in memory.
+Authentication, services, queues, history, and notifications are served by the API routes under `src/app/api`, over a SQLite database (Node's built-in driver) at `data/queuesmart.sqlite`. Set `QUEUESMART_DB_PATH` to use another file, or `:memory:`; tests use isolated in-memory databases or temporary files for reconnection checks. The file is created and seeded with the demo accounts, queues, and notifications on first use, so administrator actions reach the user screens and saved data survives a restart. Services and their empty queues are created together in SQLite, and service/queue availability is saved atomically. Service APIs require a signed-in account; mutations require an Administrator. See the [A4 verification guide](docs/A4-VERIFICATION.md) for test coverage, validated milestones, and known scope limitations.
 
 ## User demo
 
@@ -43,6 +43,6 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 The landing page is `src/app/page.tsx`. Shared components are in `src/components`; use the component guide before adding page-specific styles.
 
-This project uses `next/font` to load Outfit, matching TailAdmin's typography. A clean build needs access to Google Fonts. Run `npm run lint`, `npx tsc --noEmit`, and `npm run build` to check changes.
+This project uses `next/font` to load Outfit, matching TailAdmin's typography. A clean build needs access to Google Fonts. Run `npm run lint`, `npm run typecheck`, and `npm run build` to check changes.
 
 Set `showUniversityLogo` in `src/config/branding.ts` to control UH logos throughout the site. This affects the favicon too. The UI gallery's branding toggle changes previews only.

@@ -14,7 +14,9 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       reporter: ["text", "html", "json-summary"],
-      // Backend logic, API routes, and the front-end queue helpers.
+      // Aggregate project acceptance thresholds; substantive modules stay included.
+      thresholds: { statements: 70, lines: 70, functions: 70, branches: 70 },
+      // Persistence, backend auth/logic/routes, and existing API clients/helpers.
       include: ["src/server/**", "src/app/api/**", "src/lib/auth/**", "src/lib/api/**", "src/lib/user-demo.ts"],
       exclude: ["**/*.test.ts", "**/*.d.ts", "src/server/**/index.ts", "src/server/**/types.ts", "src/lib/auth/client-auth.ts"],
     },
