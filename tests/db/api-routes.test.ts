@@ -170,7 +170,7 @@ describe("Database Backend API Routes - UserProfile & Service", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: "Incomplete Service",
-          // missing id, description, expectedDuration, priorityLevel
+          // missing description, expectedDuration, priorityLevel
         }),
       });
 
@@ -179,7 +179,7 @@ describe("Database Backend API Routes - UserProfile & Service", () => {
 
       const json = await response.json();
       assert.equal(json.success, false);
-      assert.ok(json.errors?.id);
+      assert.equal(json.errors?.id, undefined);
       assert.ok(json.errors?.description);
       assert.ok(json.errors?.expectedDuration);
       assert.ok(json.errors?.priorityLevel);

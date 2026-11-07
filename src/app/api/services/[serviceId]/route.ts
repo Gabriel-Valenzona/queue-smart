@@ -1,19 +1,14 @@
+import { validateId } from "@/server/queue/validation";
 /**
  * Single Service API Handler
  * GET, PUT, PATCH, DELETE for a specific service in SQLite
  */
 
-import { NextResponse } from "next/server";
+import { serviceResponse, serviceFailure } from "@/server/services/http";
 import { serviceRepository } from "@/server/db/repositories/service-repository";
 import { getQueueStore, syncQueueServices } from "@/server/queue/store";
-import type { PriorityLevel, Service } from "@/server/db/types";
+import type { PriorityLevel } from "@/server/db/types";
 
-interface ServiceApiResponse {
-  success: boolean;
-  message?: string;
-  service?: Service;
-  errors?: Record<string, string>;
-}
 
 type RouteContext = {
   params: Promise<{ serviceId: string }>;
@@ -28,10 +23,11 @@ export async function GET(
 ) {
   try {
     const { serviceId } = await ctx.params;
+    validateId(serviceId, "serviceId");
     const service = serviceRepository.findById(serviceId);
 
     if (!service) {
-      return NextResponse.json<ServiceApiResponse>(
+      return serviceResponse(
         {
           success: false,
           message: `Service with ID "${serviceId}" was not found.`,
@@ -40,7 +36,7 @@ export async function GET(
       );
     }
 
-    return NextResponse.json<ServiceApiResponse>(
+    return serviceResponse(
       {
         success: true,
         service,
@@ -48,14 +44,7 @@ export async function GET(
       { status: 200 }
     );
   } catch (error) {
-    console.error("Error retrieving service:", error);
-    return NextResponse.json<ServiceApiResponse>(
-      {
-        success: false,
-        message: "Failed to retrieve service.",
-      },
-      { status: 500 }
-    );
+    return serviceFailure(error);
   }
 }
 
@@ -82,10 +71,11 @@ async function handleUpdate(
 ) {
   try {
     const { serviceId } = await ctx.params;
+    validateId(serviceId, "serviceId");
     const existing = serviceRepository.findById(serviceId);
 
     if (!existing) {
-      return NextResponse.json<ServiceApiResponse>(
+      return serviceResponse(
         {
           success: false,
           message: `Service with ID "${serviceId}" was not found.`,
@@ -98,7 +88,7 @@ async function handleUpdate(
     try {
       body = await request.json();
     } catch {
-      return NextResponse.json<ServiceApiResponse>(
+      return serviceResponse(
         {
           success: false,
           message: "Malformed request payload. JSON is required.",
@@ -108,8 +98,8 @@ async function handleUpdate(
       );
     }
 
-    if (!body || typeof body !== "object") {
-      return NextResponse.json<ServiceApiResponse>(
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return serviceResponse(
         {
           success: false,
           message: "Payload must be a JSON object.",
@@ -168,10 +158,12 @@ async function handleUpdate(
       }
     }
 
-    const open = payload.open !== undefined ? Boolean(payload.open) : undefined;
+    if (payload.open !== undefined && typeof payload.open !== "boolean")
+      errors.open = "open must be a boolean.";
+    const open = payload.open as boolean | undefined;
 
     if (Object.keys(errors).length > 0) {
-      return NextResponse.json<ServiceApiResponse>(
+      return serviceResponse(
         {
           success: false,
           message: "Validation failed.",
@@ -195,7 +187,7 @@ async function handleUpdate(
       // Ignored in test environment
     }
 
-    return NextResponse.json<ServiceApiResponse>(
+    return serviceResponse(
       {
         success: true,
         message: "Service updated successfully.",
@@ -204,14 +196,7 @@ async function handleUpdate(
       { status: 200 }
     );
   } catch (error) {
-    console.error("Error updating service:", error);
-    return NextResponse.json<ServiceApiResponse>(
-      {
-        success: false,
-        message: error instanceof Error ? error.message : "Internal server error.",
-      },
-      { status: 500 }
-    );
+    return serviceFailure(error);
   }
 }
 
@@ -224,10 +209,11 @@ export async function DELETE(
 ) {
   try {
     const { serviceId } = await ctx.params;
+    validateId(serviceId, "serviceId");
     const existing = serviceRepository.findById(serviceId);
 
     if (!existing) {
-      return NextResponse.json<ServiceApiResponse>(
+      return serviceResponse(
         {
           success: false,
           message: `Service with ID "${serviceId}" was not found.`,
@@ -244,7 +230,7 @@ export async function DELETE(
       // Ignored in test environment
     }
 
-    return NextResponse.json<ServiceApiResponse>(
+    return serviceResponse(
       {
         success: true,
         message: `Service "${serviceId}" was deleted successfully.`,
@@ -252,13 +238,6 @@ export async function DELETE(
       { status: 200 }
     );
   } catch (error) {
-    console.error("Error deleting service:", error);
-    return NextResponse.json<ServiceApiResponse>(
-      {
-        success: false,
-        message: error instanceof Error ? error.message : "Internal server error.",
-      },
-      { status: 500 }
-    );
+    return serviceFailure(error);
   }
 }

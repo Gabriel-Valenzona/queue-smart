@@ -9,7 +9,8 @@
  */
 
 import type { DatabaseSync } from "node:sqlite";
-import { getDatabase } from "../connection";
+import { ensureQueue } from "@/server/queue/repository";
+import { getDatabase, transaction } from "../connection";
 import { SEED_SERVICES } from "../schema";
 import type {
   CreateServiceInput,
@@ -126,27 +127,30 @@ export class ServiceRepository {
       throw new Error(`Service with ID "${id}" already exists.`);
     }
 
-    this.db
-      .prepare(
-        `INSERT INTO services (id, name, description, expected_duration, priority_level, open, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-      )
-      .run(
-        id,
-        name,
-        description,
-        expectedDuration,
-        priorityLevel,
-        open,
-        now,
-        data.updatedAt || now
-      );
+    return transaction(this.db, () => {
+      this.db
+        .prepare(
+          `INSERT INTO services (id, name, description, expected_duration, priority_level, open, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          id,
+          name,
+          description,
+          expectedDuration,
+          priorityLevel,
+          open,
+          now,
+          data.updatedAt || now
+        );
 
-    const created = this.findById(id);
-    if (!created) {
-      throw new Error(`Failed to retrieve newly created service with id: ${id}`);
-    }
-    return created;
+      const created = this.findById(id);
+      if (!created) {
+        throw new Error(`Failed to retrieve newly created service with id: ${id}`);
+      }
+      ensureQueue(this.db, created);
+      return created;
+    });
   }
 
   /**

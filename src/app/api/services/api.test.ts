@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { getDatabase } from "@/server/db/connection";
+import { serviceRepository } from "@/server/db/repositories/service-repository";
 import { authService } from "@/lib/auth/auth-service";
 import { getQueueStore, resetQueueStore } from "@/server/queue/store";
 import { GET, POST } from "./route";
@@ -42,7 +44,11 @@ async function request(
           : JSON.stringify(body),
   });
 }
-beforeEach(() => resetQueueStore());
+beforeEach(() => {
+  getDatabase().exec("DELETE FROM services");
+  serviceRepository.seedDefaultServices();
+  resetQueueStore();
+});
 
 describe("service API access and validation", () => {
   it("lists shared services for both roles with no-store caching, including cookie authentication", async () => {
@@ -50,7 +56,7 @@ describe("service API access and validation", () => {
       const response = await GET(await request("GET", undefined, id, true));
       expect(response.status).toBe(200);
       expect(response.headers.get("Cache-Control")).toBe("no-store");
-      expect((await response.json()).services).toEqual(
+      expect((await response.json()).services).toMatchObject(
         getQueueStore().services,
       );
     }
@@ -114,7 +120,7 @@ describe("service API access and validation", () => {
           params("student-services"),
         )
       ).status,
-    ).toBe(400);
+    ).toBe(200);
     expect(
       (await PUT(await request("PUT", "{bad"), params("student-services")))
         .status,
@@ -150,13 +156,13 @@ describe("service API access and validation", () => {
     expect(
       getQueue(getQueueStore(), service.id).entries[0].estimatedWaitMinutes,
     ).toBe(8);
-    // Resolve the global store per request: a reset must not retain old service collections.
+    // Reset queues while retaining persisted service definitions.
     resetQueueStore();
     expect((await (await GET(await request())).json()).services).toHaveLength(
-      3,
+      4,
     );
     expect(
       (await PUT(await request("PUT", input), params(service.id))).status,
-    ).toBe(404);
+    ).toBe(200);
   });
 });

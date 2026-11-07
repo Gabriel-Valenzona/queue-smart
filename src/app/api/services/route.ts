@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 /**
  * Services API Handler
  * Area 3: Service - Stores services offered by the organization:
@@ -8,27 +9,20 @@
  * - Priority level
  */
 
-import { NextResponse } from "next/server";
+import { serviceResponse, serviceFailure } from "@/server/services/http";
 import { serviceRepository } from "@/server/db/repositories/service-repository";
 import { getQueueStore, syncQueueServices } from "@/server/queue/store";
-import type { PriorityLevel, Service } from "@/server/db/types";
+import type { PriorityLevel } from "@/server/db/types";
 
-interface ServiceApiResponse {
-  success: boolean;
-  message?: string;
-  service?: Service;
-  services?: Service[];
-  errors?: Record<string, string>;
-}
 
 /**
  * GET /api/services
  * Returns all organization services stored in SQLite.
  */
-export async function GET() {
+export async function GET(_request?: Request) {
   try {
     const services = serviceRepository.listAll();
-    return NextResponse.json<ServiceApiResponse>(
+    return serviceResponse(
       {
         success: true,
         services,
@@ -36,14 +30,7 @@ export async function GET() {
       { status: 200 }
     );
   } catch (error) {
-    console.error("Error retrieving services:", error);
-    return NextResponse.json<ServiceApiResponse>(
-      {
-        success: false,
-        message: "Failed to retrieve services.",
-      },
-      { status: 500 }
-    );
+    return serviceFailure(error);
   }
 }
 
@@ -58,7 +45,7 @@ export async function POST(request: Request) {
     try {
       body = await request.json();
     } catch {
-      return NextResponse.json<ServiceApiResponse>(
+      return serviceResponse(
         {
           success: false,
           message: "Malformed request payload. JSON is required.",
@@ -68,8 +55,8 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!body || typeof body !== "object") {
-      return NextResponse.json<ServiceApiResponse>(
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return serviceResponse(
         {
           success: false,
           message: "Payload must be a JSON object.",
@@ -82,11 +69,10 @@ export async function POST(request: Request) {
     const errors: Record<string, string> = {};
 
     // 1. Service ID
-    const rawId = payload.id || payload.serviceId;
-    if (typeof rawId !== "string" || rawId.trim().length === 0) {
-      errors.id = "Service ID is required.";
-    } else if (!/^[a-zA-Z0-9-_]+$/.test(rawId.trim())) {
-      errors.id = "Service ID must be alphanumeric and may contain hyphens or underscores.";
+    const rawId = payload.id !== undefined ? payload.id
+      : payload.serviceId !== undefined ? payload.serviceId : `service-${randomUUID()}`;
+    if (typeof rawId !== "string" || !rawId.trim() || rawId.trim().length > 64 || !/^[a-zA-Z0-9_-]+$/.test(rawId.trim())) {
+      errors.id = "Service ID must use 1–64 letters, numbers, hyphens, or underscores.";
     }
 
     // 2. Service name
@@ -109,7 +95,7 @@ export async function POST(request: Request) {
     const rawDuration =
       payload.expectedDuration !== undefined ? payload.expectedDuration : payload.duration;
     const durationNum = Number(rawDuration);
-    if (rawDuration === undefined || rawDuration === null || isNaN(durationNum) || durationNum <= 0) {
+    if (rawDuration === undefined || rawDuration === null || !Number.isFinite(durationNum) || durationNum <= 0) {
       errors.expectedDuration = "Expected duration must be a positive integer number of minutes.";
     } else if (!Number.isInteger(durationNum)) {
       errors.expectedDuration = "Expected duration must be a whole number of minutes.";
@@ -123,8 +109,11 @@ export async function POST(request: Request) {
       errors.priorityLevel = "Priority level must be 'low', 'medium', or 'high'.";
     }
 
+    if (payload.open !== undefined && typeof payload.open !== "boolean")
+      errors.open = "open must be a boolean.";
+
     if (Object.keys(errors).length > 0) {
-      return NextResponse.json<ServiceApiResponse>(
+      return serviceResponse(
         {
           success: false,
           message: "Validation failed. Please correct the highlighted errors.",
@@ -137,7 +126,7 @@ export async function POST(request: Request) {
     const serviceId = String(rawId).trim();
     const existing = serviceRepository.findById(serviceId);
     if (existing) {
-      return NextResponse.json<ServiceApiResponse>(
+      return serviceResponse(
         {
           success: false,
           message: `Service with ID "${serviceId}" already exists.`,
@@ -147,7 +136,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const open = payload.open !== undefined ? Boolean(payload.open) : true;
+    const open = payload.open === true;
 
     const created = serviceRepository.create({
       id: serviceId,
@@ -165,7 +154,7 @@ export async function POST(request: Request) {
       // Handled if in test or decoupled
     }
 
-    return NextResponse.json<ServiceApiResponse>(
+    return serviceResponse(
       {
         success: true,
         message: "Service created successfully.",
@@ -174,13 +163,6 @@ export async function POST(request: Request) {
       { status: 201 }
     );
   } catch (error) {
-    console.error("Error creating service:", error);
-    return NextResponse.json<ServiceApiResponse>(
-      {
-        success: false,
-        message: error instanceof Error ? error.message : "Internal server error.",
-      },
-      { status: 500 }
-    );
+    return serviceFailure(error);
   }
 }

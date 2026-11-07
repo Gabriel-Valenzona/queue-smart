@@ -132,7 +132,7 @@ export function seedQueues(db: Database) {
   transaction(db, () => {
     if (countQueues(db) > 0) return;
     const seed = createSeedStore();
-    for (const service of seed.services) saveLine(db, service, seed.queues[service.id]);
+    for (const service of seed.services) saveLine(db, service, seed.queues[service.id] ?? []);
   });
 }
 
