@@ -99,3 +99,16 @@ failures and regressions must be resolved before committing.
   confirmed all six endpoints return 401 without sessions, User reads return 200
   and mutations 403, and Administrator create/update/delete succeeds. Every
   response had `no-store`; rejected mutations left stored services unchanged.
+
+### 5a — Credentials persistence gaps
+
+- Added real-file registration/login/reconnection checks for normalized unique
+  email, verifiable salted password hashing without plaintext, sanitized API
+  users, and associated profile/preferences persistence.
+- Covered UserRepository mappings, default profiles, missing lookups, uniqueness,
+  idempotent protected seeding, and reset persistence with seeding disabled.
+- Hardened the previous user-store reconnection test to close both connections
+  even when assertions fail. Primary authentication suite: 66 tests passed;
+  TypeScript, test ESLint and diff checks passed.
+- Independent validator: **PASS**, authentication suite 66/66 passed, fixtures
+  and persisted assertions reviewed, focused ESLint/diff checks passed.

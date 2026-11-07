@@ -177,15 +177,23 @@ describe("user_credentials table", () => {
     try {
       const file = path.join(dir, "users.sqlite");
       const firstDb = openDatabase(file);
-      const created = await new UserStore(() => firstDb).create(account);
-      const count = await new UserStore(() => firstDb).count();
-      firstDb.close();
+      let created;
+      let count;
+      try {
+        created = await new UserStore(() => firstDb).create(account);
+        count = await new UserStore(() => firstDb).count();
+      } finally {
+        firstDb.close();
+      }
 
       const secondDb = openDatabase(file);
-      const second = new UserStore(() => secondDb);
-      assert.deepEqual(await second.findById(created.id), created);
-      assert.equal(await second.count(), count);
-      secondDb.close();
+      try {
+        const second = new UserStore(() => secondDb);
+        assert.deepEqual(await second.findById(created.id), created);
+        assert.equal(await second.count(), count);
+      } finally {
+        secondDb.close();
+      }
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
